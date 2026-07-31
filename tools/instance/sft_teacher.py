@@ -136,6 +136,22 @@ def add_domain_tokens(model, tok, torch):
         return None
 
     w = model.get_input_embeddings().weight
+    # Re-initialise the new rows: RANDOM DIRECTIONS at the base row-norm scale. Measured
+    # (tools/instance/probe_init.py) against the base rows' own geometry, mean pairwise cosine:
+    #     BASE +0.0117 | default +1.0000 | subtoken +0.8587 | subtoken-centred +0.8583
+    #     random-centred -0.0000            <- the only one that matches BASE
+    # transformers' default leaves every new row the same near-zero vector (row-norm 0.092 vs
+    # 0.855), i.e. the +0.998 collapse that made the reranker unable to read DECK[].
+    # Sub-token means do not fix it: every card token shares the pieces "c" and digits, so they
+    # share a direction no centring removes -- the earlier "semantic re-init" reached only
+    # +0.7096 for the same reason. Random loses the (unusable) semantics and buys a geometry the
+    # rows can actually be trained apart from, which is the point of training them at all.
+    with torch.no_grad():
+        tgt = w[:n_old].float().norm(dim=1).median()
+        gen = torch.Generator(device="cpu").manual_seed(3407)
+        g = torch.randn(n_added, w.shape[1], generator=gen, dtype=torch.float32)
+        g = g / g.norm(dim=1, keepdim=True) * tgt
+        w[n_old:] = g.to(device=w.device, dtype=w.dtype)
     new = w[n_old:].detach().float()
     nrm = new / new.norm(dim=1, keepdim=True).clamp_min(1e-9)
     # sample 512 rows: the full 2971^2 gram is affordable but the sample is enough and keeps
@@ -150,11 +166,13 @@ def add_domain_tokens(model, tok, torch):
     boff = bg[~torch.eye(len(bn), dtype=torch.bool, device=bg.device)]
     print("[tokens] new-row pairwise cosine  mean %+.4f  max %+.4f   (base rows: mean %+.4f)"
           % (off.mean(), off.max(), boff.mean()), flush=True)
-    if off.mean() > 0.9:
-        raise SystemExit("[tokens] REFUSING: new rows are near-identical (mean cos %.4f). "
-                         "That is the +0.998 degeneracy that made the reranker blind to "
-                         "DECK[]; training them would start from a collapsed geometry."
-                         % off.mean())
+    # Threshold is set from the BASE rows measured in the same run, not a guessed constant.
+    # The first version used 0.9 and would have waved through the +0.8177 the smoke produced.
+    if off.mean() > boff.mean() + 0.15:
+        raise SystemExit("[tokens] REFUSING: new rows sit at mean cosine %.4f against %.4f for "
+                         "the base rows. That is the degeneracy that made the reranker unable "
+                         "to read DECK[]; training from a collapsed geometry wastes the run."
+                         % (off.mean(), boff.mean()))
     return n_old
 
 
@@ -181,10 +199,14 @@ def unfreeze_new_rows(model, n_base, torch):
         head.weight.requires_grad_(False)
     print("[emb] training rows %d.. (%d of %d) | lm_head frozen"
           % (n_base, emb.weight.shape[0] - n_base, emb.weight.shape[0]), flush=True)
-    return emb.weight[n_base:].detach().float().cpu().clone()
+    # keep a SAMPLE of base rows (the full 248k x 4096 copy would be 4 GB) to prove afterwards
+    # that the hook actually held them
+    bidx = torch.arange(0, n_base, max(1, n_base // 4096))[:4096].to(emb.weight.device)
+    return (emb.weight[n_base:].detach().float().cpu().clone(),
+            (bidx.cpu(), emb.weight[bidx].detach().float().cpu().clone()))
 
 
-def report_embedding_movement(model, n_base, emb0, torch, out_dir):
+def report_embedding_movement(model, n_base, emb0, torch, out_dir, base0=None):
     """Did the new rows actually LEARN, and did the base rows stay put?
 
     On the reranker the added rows shifted 0.42% of their norm in a full epoch even with
@@ -194,8 +216,25 @@ def report_embedding_movement(model, n_base, emb0, torch, out_dir):
     w = model.get_input_embeddings().weight.detach().float().cpu()
     new = w[n_base:]
     d = (new - emb0).norm(dim=1) / emb0.norm(dim=1).clamp_min(1e-9)
-    print("[emb] new rows moved: median %.3f%%  p90 %.3f%%  max %.3f%%  (reranker managed 0.42%%)"
-          % (100 * d.median(), 100 * d.quantile(0.9), 100 * d.max()), flush=True)
+    moved = (d > 1e-6)
+    # Rows for tokens that never appeared in the sampled data get no gradient, so the median over
+    # ALL rows reads 0.000% and hides whether the ones that DID appear learned anything. Report
+    # the share that moved, and the distribution among those.
+    print("[emb] new rows that moved: %d/%d (%.1f%%)"
+          % (moved.sum(), len(d), 100.0 * moved.sum() / len(d)), flush=True)
+    if moved.any():
+        dm = d[moved]
+        print("[emb]   among them: median %.3f%%  p90 %.3f%%  max %.3f%%  "
+              "(the reranker's added rows managed 0.42%% and stayed unlearned)"
+              % (100 * dm.median(), 100 * dm.quantile(0.9), 100 * dm.max()), flush=True)
+    # The other half of the check: the gradient hook is supposed to hold every BASE row fixed.
+    # Nothing so far has verified that, and a leak would mean a 1B-parameter finetune nobody
+    # asked for, quietly degrading the base model.
+    if base0 is not None:
+        bd = (w[base0[0]] - base0[1]).abs().max()
+        print("[emb] base rows max abs change %.3e  %s"
+              % (bd, "OK (frozen)" if bd < 1e-6 else "*** LEAK: the grad hook is not holding ***"),
+              flush=True)
     path = os.path.join(out_dir, "domain_embeddings.pt")
     torch.save({"n_base": n_base, "rows": w[n_base:].clone()}, path)
     print("[emb] saved %d new rows -> %s" % (new.shape[0], path), flush=True)
@@ -267,9 +306,9 @@ def main():
         random_state=3407,
         max_seq_length=a.maxlen,
     )
-    emb0 = None
+    emb0 = base0 = None
     if n_base_vocab is not None:
-        emb0 = unfreeze_new_rows(model, n_base_vocab, torch)
+        emb0, base0 = unfreeze_new_rows(model, n_base_vocab, torch)
     print("[peft] trainable %.1fM"
           % (sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6), flush=True)
 
@@ -321,7 +360,7 @@ def main():
     model.save_pretrained(a.out)
     tok.save_pretrained(a.out)
     if n_base_vocab is not None and emb0 is not None:
-        report_embedding_movement(model, n_base_vocab, emb0, torch, a.out)
+        report_embedding_movement(model, n_base_vocab, emb0, torch, a.out, base0)
     print("[saved] %s | total %.1f min" % (a.out, (time.time() - t0) / 60), flush=True)
 
 
