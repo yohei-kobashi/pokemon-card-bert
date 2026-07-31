@@ -48,8 +48,10 @@ def main(pattern):
                 bal[k].append(100.0 * (lm - rf) / tot)
         for st in (s0, s1):
             for kv, c in st["swap"].items():
-                swaps[kv] += c
-                swap_decks[kv].add(name)
+                # the dump stores swaps as "X->Y" strings, not tuples
+                x, _, y = kv.partition("->")
+                swaps[(x, y)] += c
+                swap_decks[(x, y)].add(name)
         w0, l0 = s0["w"], s0["l"]
         w1, l1 = s1["w"], s1["l"]
         per_deck_seat.append((name, w0, l0, w1, l1))
