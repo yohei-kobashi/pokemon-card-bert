@@ -25,7 +25,8 @@ for p in ("/root/ptcg/repo", "/root/ptcg/repo/cg-lib"):
 
 
 def stats(M, torch, label, ref=None):
-    n = M / M.norm(dim=1, keepdim=True).clamp_min(1e-9)
+    M = M.float()          # the checkpoint is bf16; quantile() rejects it, and cosines this
+    n = M / M.norm(dim=1, keepdim=True).clamp_min(1e-9)   # close to 1.0 need the precision
     k = min(512, n.shape[0])
     idx = torch.arange(0, n.shape[0], max(1, n.shape[0] // k))[:k]
     g = n[idx] @ n[idx].T
@@ -48,7 +49,7 @@ def main():
     # embeddings only -- loading the whole 9B is unnecessary for this question
     m = AutoModelForCausalLM.from_pretrained(name, dtype=torch.float32,
                                              device_map="cpu", low_cpu_mem_usage=True)
-    W = m.get_input_embeddings().weight.detach()
+    W = m.get_input_embeddings().weight.detach().float()
     n_base = W.shape[0]
     print("[probe] base embedding %s" % (tuple(W.shape),), flush=True)
     base_ref = stats(W[::max(1, n_base // 512)][:512], torch, "BASE")
