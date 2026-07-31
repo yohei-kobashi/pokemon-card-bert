@@ -139,7 +139,7 @@ for name, ks in [('WORSE',[k for k,v in d.items() if v['verdict']=='WORSE']),
   else
     MIX=/root/ptcg/repo/data/rerank/loop_r$NEXT.rerank.jsonl.gz
     # accumulate EVERY round's dagger, not just this one
-    python3 - "$STATE" "$MIX" <<'PY'
+    python3 - "$STATE" "$MIX" "$RATIO" <<'PY'
 import glob, gzip, json, random, sys
 state, out, ratio = sys.argv[1], sys.argv[2], float(sys.argv[3])
 rng = random.Random(0)
@@ -165,7 +165,9 @@ with gzip.open(out, "wt") as fh:
 print("[mix] dagger %d (all rounds) + base %d = %d (%.0f%% dagger)"
       % (len(dag), len(res), len(rows), 100.0 * len(dag) / len(rows)))
 PY
+    [ $? -eq 0 ] || { say "mix FAILED -- stopping (a stale mix on disk would train silently)"; break; }
     OUT=/root/out/rerank_loop$NEXT
+    [ -s "$MIX" ] || { say "mix file missing -- stopping"; break; }
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     if [ "$CONT" = 1 ]; then
       FROM=(--model "$MODEL" --deadline-h 2 --max-samples 250000 --lr 1e-5)
