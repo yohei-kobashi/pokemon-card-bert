@@ -141,12 +141,36 @@ def make_agent(spec, deck_name, deck_ids, profile):
     return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
 
 
-def sprt(w, l, p0, p1, alpha, beta):
-    """-> (llr, verdict). Draws carry no information about p and are excluded by the caller."""
-    llr = w * math.log(p1 / p0) + l * math.log((1 - p1) / (1 - p0))
+def sprt(w, l, p0, p1, alpha, beta, margin=0.05):
+    """-> (llr_superiority, llr_non_inferiority, verdict). Draws carry no information about p.
+
+    TWO tests run together, because a single superiority SPRT answers the wrong question when
+    the challenger is not expected to win. With H0 p<=0.50 / H1 p>=0.55 alone, a true 40% pilot
+    and a true 50% pilot BOTH come back "NO_DIFFERENCE" -- and the 40% one resolves FASTER (118
+    games vs 290), so the worse result looks like the more confident one.
+
+      superiority      H0: p <= p0        H1: p >= p1        is B actually better?
+      non-inferiority  H0: p <= p0-margin H1: p >= p0        is B at least not meaningfully worse?
+
+    WORSE      non-inferiority rejected -- B is more than `margin` behind
+    EQUIVALENT non-inferior AND not superior -- the "same strength" answer, stated positively
+    BETTER     superiority accepted
+    """
+    def _llr(hi_p, lo_p):
+        return w * math.log(hi_p / lo_p) + l * math.log((1 - hi_p) / (1 - lo_p))
     hi = math.log((1 - beta) / alpha)
     lo = math.log(beta / (1 - alpha))
-    return llr, ("B_STRONGER" if llr >= hi else "NO_DIFFERENCE" if llr <= lo else "undecided")
+    sup = _llr(p1, p0)
+    ni = _llr(p0, p0 - margin)
+    if ni <= lo:
+        v = "WORSE"
+    elif sup >= hi:
+        v = "BETTER"
+    elif ni >= hi and sup <= lo:
+        v = "EQUIVALENT"
+    else:
+        v = "undecided"
+    return sup, ni, v
 
 
 def main():
@@ -158,6 +182,8 @@ def main():
     ap.add_argument("--max-games", type=int, default=400)
     ap.add_argument("--p0", type=float, default=0.50)
     ap.add_argument("--p1", type=float, default=0.55)
+    ap.add_argument("--margin", type=float, default=0.05,
+                    help="equivalence margin: B counts as WORSE only below p0-margin")
     ap.add_argument("--alpha", type=float, default=0.05)
     ap.add_argument("--beta", type=float, default=0.05)
     ap.add_argument("--out", default="")
@@ -190,28 +216,30 @@ def main():
             else:
                 l += 1
             if w + l >= 20:
-                llr, verdict = sprt(w, l, args.p0, args.p1, args.alpha, args.beta)
+                sup, ni, verdict = sprt(w, l, args.p0, args.p1, args.alpha, args.beta,
+                                        args.margin)
                 if verdict != "undecided":
                     break
             if (g + 1) % 20 == 0:
-                llr, _v = sprt(w, l, args.p0, args.p1, args.alpha, args.beta)
-                print("  %-22s %3d games  B %3d-%-3d (%.1f%%) draws %d  LLR %+.2f  %.0fs"
-                      % (deck, g + 1, w, l, 100.0 * w / max(1, w + l), d, llr, time.time() - t0),
-                      flush=True)
+                sup, ni, _v = sprt(w, l, args.p0, args.p1, args.alpha, args.beta, args.margin)
+                print("  %-22s %3d games  B %3d-%-3d (%.1f%%) draws %d  sup %+.2f ni %+.2f  %.0fs"
+                      % (deck, g + 1, w, l, 100.0 * w / max(1, w + l), d, sup, ni,
+                         time.time() - t0), flush=True)
         n = w + l
         p = w / max(1, n)
         se = math.sqrt(0.25 / max(1, n))
-        llr, verdict = sprt(w, l, args.p0, args.p1, args.alpha, args.beta)
-        print("%-24s B %d-%d (%.1f%% +- %.1f)  draws %d  LLR %+.2f  -> %s   %.0fs"
-              % (deck, w, l, 100 * p, 100 * se, d, llr, verdict, time.time() - t0), flush=True)
+        sup, ni, verdict = sprt(w, l, args.p0, args.p1, args.alpha, args.beta, args.margin)
+        print("%-24s B %d-%d = %.1f%% (95%% CI %.1f-%.1f)  draws %d  sup %+.2f ni %+.2f -> %s   %.0fs"
+              % (deck, w, l, 100 * p, 100 * (p - 1.96 * se), 100 * (p + 1.96 * se), d,
+                 sup, ni, verdict, time.time() - t0), flush=True)
         if d > 0.05 * (n + d):
             print("  NOTE: %d/%d games were draws/timeouts and are excluded from the test; a "
                   "pilot that stalls games would hide here." % (d, n + d), flush=True)
         if scB is not None and getattr(scB, "n", 0):
             print("  challenger scored %d decisions, %.3f s each"
                   % (scB.n, scB.t / scB.n), flush=True)
-        results[deck] = {"w": w, "l": l, "d": d, "p": p, "se": se, "llr": llr,
-                         "verdict": verdict}
+        results[deck] = {"w": w, "l": l, "d": d, "p": p, "se": se,
+                         "verdict": verdict, "sup": sup, "ni": ni}
     if args.out:
         with open(args.out, "w") as f:
             json.dump({"a": args.a, "b": args.b, "decks": results}, f, indent=1)
