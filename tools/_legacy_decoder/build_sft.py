@@ -25,12 +25,26 @@ import shutil
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# this file lives at tools/_legacy_decoder/, i.e. TWO levels below the repo root -- the
+# two-dirname version resolved to tools/ and made it look for data/ under tools/.
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 for p in (ROOT, os.path.join(ROOT, "cg-lib"), os.path.join(ROOT, "tools")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
 from lm.serialize import serialize_stateless, render_logs, multipick_substate, STOP  # noqa: E402
+
+import rl_config  # noqa: E402
+
+
+def _ser_cur(obs, deck_ids=None, deck_name=None):
+    """serialize_stateless in the CURRENT prompt format.
+
+    Bare serialize_stateless() renders the legacy full-rules glossary with no DECK[] and no
+    `ID ME` -- a ~838-token prompt for models trained on ~245. rl_config.PROMPT_FMT is the single
+    source of truth and the deck NAME is not optional (it renders `ID ME d_x a_y`)."""
+    return serialize_stateless(obs, deck_ids=deck_ids, deck_name=deck_name,
+                               **dict(rl_config.PROMPT_FMT))
 from lm.actions import encode_option                       # noqa: E402
 from eval_state import evaluate, WIN                        # noqa: E402
 from cg.api import to_observation_class                     # noqa: E402
@@ -119,7 +133,34 @@ def _executed_indices(step):
     return (step.get("executed") if step.get("explored") else step.get("action")) or []
 
 
-def _multipick_pairs(step, deck_ids=None):
+TARGET_MODE = "action"          # "action" = encode_option string, "index" = menu position
+
+
+def _idx_target(step, remap=None):
+    """The chosen option's position in the RENDERED menu, as a string.
+
+    `remap` is the substate's remaining-original-index list for a multi-pick step, because the
+    substate menu is a subset and renumbers. Returns None when the position cannot be resolved,
+    so the caller can drop the record rather than emit a wrong label."""
+    idx = _executed_indices(step)
+    if len(idx) != 1:
+        return None
+    j = idx[0]
+    if remap is not None:
+        try:
+            j = list(remap).index(j)
+        except ValueError:
+            return None
+    return str(j)
+
+
+
+def _dname(header, p):
+    """Deck NAME for player p. gen_selfplay writes header["agents"] = {"0": nameA, "1": nameB}."""
+    a = (header or {}).get("agents") or {}
+    return a.get(str(p)) or a.get(p)
+
+def _multipick_pairs(step, deck_ids, deck_name=None):
     """Decompose a multi-pick (maxCount>=2) into a SEQUENCE of single-pick samples:
     for each picked option (in recorded order) a (prompt, target) where the prompt's
     menu is the not-yet-picked options and the target is the chosen option's encoding;
@@ -133,12 +174,14 @@ def _multipick_pairs(step, deck_ids=None):
     pairs, picked = [], []
     for pos_i in order:
         sub, _remaining, _stop = multipick_substate(obs, picked)
-        pairs.append((serialize_stateless(sub, deck_ids=deck_ids), encode_option(opts[pos_i], obs)))
+        _t = (str(_remaining.index(pos_i)) if TARGET_MODE == "index"
+              else encode_option(opts[pos_i], obs))
+        pairs.append((_ser_cur(sub, deck_ids, deck_name), _t))
         picked.append(pos_i)
     if lo <= len(picked) < hi:                 # heuristic chose to stop early
         sub, _remaining, allow_stop = multipick_substate(obs, picked)
         if allow_stop:
-            pairs.append((serialize_stateless(sub, deck_ids=deck_ids), STOP))
+            pairs.append((_ser_cur(sub, deck_ids, deck_name), STOP))
     return pairs
 
 
@@ -262,12 +305,21 @@ def _build_shard(job):
                 by_i = {s["i"]: s for s in steps}   # for the post-move state S1 (MAIN delta)
                 # each player's FULL deck (visible only at turn 0) -> STABLE glossary prefix (v2);
                 # take the longest deck seen per side (= the initial 60 before any draw).
-                game_decks = {0: [], 1: []}
-                for _s in steps:
-                    for _i, _pl in enumerate(((( _s.get("obs") or {}).get("current") or {}).get("players") or [])[:2]):
-                        _d = [c["id"] for c in (_pl.get("deck") or [])]
-                        if len(_d) > len(game_decks.get(_i, [])):
-                            game_decks[_i] = _d
+                # Scanning the per-step obs for this is a DEAD END: an observation carries only
+                # `deckCount`, never the list, so the scan below always produced [] and every
+                # prompt rendered WITHOUT the DECK[...] segment -- verified at 0.0% of 20,000
+                # records. It is the same hole that made every build_rerank record deck-less
+                # while inference passed the real 60 cards. gen_selfplay writes the real lists
+                # into the game header (`"decks": {"0": d0, "1": d1}`), so read them from there.
+                _hd = (header or {}).get("decks") or {}
+                game_decks = {0: list(_hd.get("0") or _hd.get(0) or []),
+                              1: list(_hd.get("1") or _hd.get(1) or [])}
+                if not (game_decks[0] and game_decks[1]):      # pre-schema-1 logs: fall back
+                    for _s in steps:
+                        for _i, _pl in enumerate(((( _s.get("obs") or {}).get("current") or {}).get("players") or [])[:2]):
+                            _d = [c["id"] for c in (_pl.get("deck") or [])]
+                            if len(_d) > len(game_decks.get(_i, [])):
+                                game_decks[_i] = _d
                 scores = _prefetch_scores(steps, by_i, adopt)   # ONE predict per game
                 psteps = {0: [], 1: []}
                 pos = {}
@@ -327,19 +379,23 @@ def _build_shard(job):
                             action = _executed_target(s)
                         else:                                  # legacy winner-only
                             action = _action_target(s)
-                        pairs = [(serialize_stateless(s["obs"], deck_ids=game_decks.get(p)), action)]
+                        pairs = [(_ser_cur(s["obs"], game_decks.get(p), _dname(header, p)),
+                                  (_idx_target(s) if TARGET_MODE == "index" else action))]
                     else:                                      # sub-selection
                         if adopt == "winner" or _nopt(s) < 2:  # forced / legacy: skip
                             continue
                         sel = s["obs"].get("select") or {}
                         lo, hi = sel.get("minCount", 1) or 0, sel.get("maxCount", 1) or 1
                         if lo == 1 and hi == 1:                # exactly one -> single sample
-                            pairs = [(serialize_stateless(s["obs"], deck_ids=game_decks.get(p)), _executed_target(s))]
+                            pairs = [(_ser_cur(s["obs"], game_decks.get(p), _dname(header, p)),
+                                      (_idx_target(s) if TARGET_MODE == "index"
+                                       else _executed_target(s)))]
                         else:                                  # multi / optional -> sequential
-                            pairs = _multipick_pairs(s, game_decks.get(p))
+                            pairs = _multipick_pairs(s, game_decks.get(p), _dname(header, p))
                         st["sub_adopt"] += len(pairs)
 
                     k = pos[s["i"]]
+                    pairs = [(a, b) for a, b in pairs if b is not None]
                     for prompt_body, act_target in pairs:
                         for mode in modes:
                             if mode == "reason" and not emit_reason:
@@ -367,7 +423,7 @@ def _build_shard(job):
     return st
 
 
-def _init_worker(value_model, turn_boundary):
+def _init_worker(value_model, turn_boundary, target_mode="action"):
     """Fit this worker's own scorer. Never inherit one across the process boundary.
 
     The previous version deliberately used `fork` so children would inherit the parent's
@@ -378,6 +434,8 @@ def _init_worker(value_model, turn_boundary):
     -- exactly one per worker, all on their first matchup, all empty -- and 0 of 1770
     shards. Saving 4 refits cost the entire run. Workers are spawned now, and single
     threading (below) also stops 4 workers x N BLAS threads oversubscribing 4 cores."""
+    global TARGET_MODE          # workers are SPAWNED, so the parent's global never arrives
+    TARGET_MODE = target_mode
     for v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ[v] = "1"
     global _SCORER, _TURN_BOUNDARY
@@ -432,7 +490,7 @@ def build(tag, out_dir, window, main_only, modes, adopt, margin, temp=0.0, seed=
         # (numpy/sklearn OpenMP threads) hangs every child on its first matchup.
         ctx = mp.get_context("spawn")
         with ctx.Pool(workers, initializer=_init_worker,
-                      initargs=(value_model, turn_boundary)) as pool:
+                      initargs=(value_model, turn_boundary, TARGET_MODE)) as pool:
             for st in pool.imap_unordered(_build_shard, jobs):
                 results.append(st)
                 _progress(results, len(files), t0)
@@ -523,6 +581,11 @@ def main():
     ap.add_argument("--main-only", action="store_true", default=True,
                     help="emit samples only at MAIN selections (sub-selects -> heuristic)")
     ap.add_argument("--modes", default="act,reason", help="comma list: act, reason")
+    ap.add_argument("--target-mode", choices=["action", "index"], default="action",
+                    help="'action' emits encode_option(chosen); 'index' emits the chosen "
+                         "option's position in the rendered menu (1-2 tokens, and one forward "
+                         "then yields a distribution over ALL candidates -- what distillation "
+                         "into the cross-encoder needs)")
     ap.add_argument("--value-model", default="",
                     help="path to value_data.npz / value_model.pkl / their dir; "
                          "enables the LEARNED scorer (scale = win-prob percentage points)")
@@ -550,6 +613,8 @@ def main():
                          "Kaggle with --out pointed at the persisted output dir: every finished "
                          "shard survives a 12 h-limit kill and the next run resumes on the rest")
     args = ap.parse_args()
+    global TARGET_MODE
+    TARGET_MODE = args.target_mode
     if args.value_model:
         global _SCORER, _TURN_BOUNDARY
         _TURN_BOUNDARY = args.turn_boundary

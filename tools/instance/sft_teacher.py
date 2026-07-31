@@ -110,6 +110,97 @@ def eval_top1(model, tok, torch, pairs, maxlen, bsz=16):
     return ok, tot, skipped
 
 
+def add_domain_tokens(model, tok, torch):
+    """Extend the tokenizer with the SAME 2,971 domain tokens the reranker uses, and report
+    whether the new rows are actually distinct vectors.
+
+    History: on the reranker, 3,087 added tokens ended up at pairwise cosine +0.998 -- every
+    card was the same vector to three decimals, so no training could ever have used DECK[].
+    That came from initialising new rows at the embedding MEAN. transformers now seeds them
+    from a multivariate normal matching the old embeddings' mean and covariance, which should
+    give distinct vectors -- but that is the exact thing that failed before, so it is measured
+    here rather than assumed.
+    """
+    import sys
+    for p in ("/root/ptcg/repo", "/root/ptcg/repo/cg-lib"):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    from lm.vocab import special_tokens
+
+    tk = getattr(tok, "tokenizer", tok)
+    n_old = len(tk)
+    n_added = tk.add_tokens(special_tokens())
+    model.resize_token_embeddings(len(tk))
+    print("[tokens] vocab %d -> %d (%d genuinely new)" % (n_old, len(tk), n_added), flush=True)
+    if n_added == 0:
+        return None
+
+    w = model.get_input_embeddings().weight
+    new = w[n_old:].detach().float()
+    nrm = new / new.norm(dim=1, keepdim=True).clamp_min(1e-9)
+    # sample 512 rows: the full 2971^2 gram is affordable but the sample is enough and keeps
+    # this cheap if the token set grows
+    idx = torch.arange(0, new.shape[0], max(1, new.shape[0] // 512))[:512]
+    g = nrm[idx] @ nrm[idx].T
+    off = g[~torch.eye(len(idx), dtype=torch.bool, device=g.device)]
+    base = w[:n_old].detach().float()
+    bn = base[::max(1, n_old // 512)][:512]
+    bn = bn / bn.norm(dim=1, keepdim=True).clamp_min(1e-9)
+    bg = bn @ bn.T
+    boff = bg[~torch.eye(len(bn), dtype=torch.bool, device=bg.device)]
+    print("[tokens] new-row pairwise cosine  mean %+.4f  max %+.4f   (base rows: mean %+.4f)"
+          % (off.mean(), off.max(), boff.mean()), flush=True)
+    if off.mean() > 0.9:
+        raise SystemExit("[tokens] REFUSING: new rows are near-identical (mean cos %.4f). "
+                         "That is the +0.998 degeneracy that made the reranker blind to "
+                         "DECK[]; training them would start from a collapsed geometry."
+                         % off.mean())
+    return n_old
+
+
+def unfreeze_new_rows(model, n_base, torch):
+    """Train ONLY the added embedding rows.
+
+    The full input embedding is 248,320 x 4,096 = 1.02B parameters; training all of it would
+    cost more than the LoRA it is meant to support, and the base rows do not need to move.
+    A gradient hook zeroes every base row, so the optimizer sees gradient only where the new
+    tokens are. `lm_head` is left frozen: tie_word_embeddings is False on this model, and under
+    the constrained-output rule the model only ever emits digits, never a card token.
+    """
+    emb = model.get_input_embeddings()
+    emb.weight.requires_grad_(True)
+
+    def _mask_grad(grad):
+        grad = grad.clone()
+        grad[:n_base] = 0
+        return grad
+
+    emb.weight.register_hook(_mask_grad)
+    head = model.get_output_embeddings()
+    if head is not None:
+        head.weight.requires_grad_(False)
+    print("[emb] training rows %d.. (%d of %d) | lm_head frozen"
+          % (n_base, emb.weight.shape[0] - n_base, emb.weight.shape[0]), flush=True)
+    return emb.weight[n_base:].detach().float().cpu().clone()
+
+
+def report_embedding_movement(model, n_base, emb0, torch, out_dir):
+    """Did the new rows actually LEARN, and did the base rows stay put?
+
+    On the reranker the added rows shifted 0.42% of their norm in a full epoch even with
+    --emb-lr-mult 3, i.e. they stayed at their hand-written initialisation. If that repeats
+    here, the tokens were added for nothing and the run should not be read as a test of them.
+    """
+    w = model.get_input_embeddings().weight.detach().float().cpu()
+    new = w[n_base:]
+    d = (new - emb0).norm(dim=1) / emb0.norm(dim=1).clamp_min(1e-9)
+    print("[emb] new rows moved: median %.3f%%  p90 %.3f%%  max %.3f%%  (reranker managed 0.42%%)"
+          % (100 * d.median(), 100 * d.quantile(0.9), 100 * d.max()), flush=True)
+    path = os.path.join(out_dir, "domain_embeddings.pt")
+    torch.save({"n_base": n_base, "rows": w[n_base:].clone()}, path)
+    print("[emb] saved %d new rows -> %s" % (new.shape[0], path), flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="unsloth/Qwen3.5-9B-Base")
@@ -130,6 +221,8 @@ def main():
     ap.add_argument("--alpha", type=int, default=16)
     ap.add_argument("--warmup", type=int, default=10)
     ap.add_argument("--save-steps", type=int, default=500)
+    ap.add_argument("--domain-tokens", action="store_true",
+                    help="add lm.vocab.special_tokens() and train ONLY those embedding rows")
     ap.add_argument("--eval-n", type=int, default=4000,
                     help="held-out records taken from the FRONT of the file; training skips them")
     a = ap.parse_args()
@@ -159,6 +252,10 @@ def main():
     )
     print("[load] %.1fs %s" % (time.time() - t0, type(model).__name__), flush=True)
 
+    n_base_vocab = None
+    if a.domain_tokens:
+        n_base_vocab = add_domain_tokens(model, tok, torch)
+
     model = FastLanguageModel.get_peft_model(
         model,
         r=a.rank,
@@ -170,6 +267,9 @@ def main():
         random_state=3407,
         max_seq_length=a.maxlen,
     )
+    emb0 = None
+    if n_base_vocab is not None:
+        emb0 = unfreeze_new_rows(model, n_base_vocab, torch)
     print("[peft] trainable %.1fM"
           % (sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6), flush=True)
 
@@ -220,6 +320,8 @@ def main():
               % (ok, tot, 100.0 * ok / max(1, tot)), flush=True)
     model.save_pretrained(a.out)
     tok.save_pretrained(a.out)
+    if n_base_vocab is not None and emb0 is not None:
+        report_embedding_movement(model, n_base_vocab, emb0, torch, a.out)
     print("[saved] %s | total %.1f min" % (a.out, (time.time() - t0) / 60), flush=True)
 
 
