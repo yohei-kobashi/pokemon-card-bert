@@ -478,7 +478,12 @@ def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
             + " || " + render_options(obs))
 
 
-_RE_DECK = re.compile(r"^DECK\[[^\]]*\]\s*")
+# Both DECK renderings: the flat `DECK[c1x4,...]` of static/remaining mode, and the
+# role-grouped `DECK win[...] eng[...] line[...]` of deck_mode="roles". The pattern used to
+# cover only the first, so on v39 prompts `drop_deck` silently removed NOTHING and the ablation
+# reported `-DECK[] 67.3%` against `full 67.3%` -- which reads as "the model ignores the deck"
+# when in fact the deck was never taken away.
+_RE_DECK = re.compile(r"^DECK(?:\[[^\]]*\]|(?:\s+\w+\[[^\]]*\])+)\s*")
 _RE_MYID = re.compile(r"(?<= ID )ME (d_\S+)(?: (a_\S+))?\s*")
 
 
@@ -497,12 +502,21 @@ def mask_segments(state, drop_deck=False, drop_identity=False, swap_identity=Fal
     s = state
     if drop_deck:
         s = _RE_DECK.sub("", s)
+        if s == state:
+            raise ValueError(
+                "drop_deck removed nothing from %r... -- the pattern does not match this "
+                "prompt format. A mask that silently no-ops does not read as broken, it reads "
+                "as 'the model does not use this segment', which is the opposite conclusion."
+                % state[:60])
+    before = s
     if swap_identity:
-        m = re.search(r" ID ME \S+(?: a_\S+)? OP (d_\S+?):", s)
+        m = re.search(r"ID (?:ME \S+(?: a_\S+)? )?OP (d_\S+?):", s)
         if m:
             s = _RE_MYID.sub("ME " + m.group(1) + " ", s)
     elif drop_identity:
         s = _RE_MYID.sub("", s)
+    if (swap_identity or drop_identity) and s == before and " ID ME " in before:
+        raise ValueError("identity mask removed nothing from a prompt that HAS `ID ME`")
     return s
 
 
