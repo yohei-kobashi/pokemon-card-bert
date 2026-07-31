@@ -22,7 +22,15 @@
 #   SCREEN_GAMES    mirror games per deck (default 100)
 #   COLLECT_GAMES   DAgger games per target deck (default 24)
 #   MAX_TARGETS     cap on target decks (default 24)
-#   SKIP_FIRST_SCREEN=1  reuse an existing $STATE/mirror_r1.json instead of re-screening
+#   RATIO           DAgger share of the training mix (default 0.1)
+#   SKIP_FIRST_SCREEN=1   reuse an existing $STATE/mirror_r1.json instead of re-screening
+#   SKIP_FIRST_COLLECT=1  reuse an existing $STATE/dagger_r1.jsonl.gz instead of re-collecting
+#
+# On RATIO. The first attempt used 0.3, chosen from how far it moved the `end` label prior and
+# never checked against win rate. Measured result: the target decks improved (mega_venusaur
+# 3.0 -> 13.6, doublade 20.0 -> 33.0) but decks that were already working collapsed
+# (mega_abomasnow 50.7 -> 11.9, mega_froslass 65.9 -> 46.7), for a paired mean of -4.9 pp and
+# WORSE going 36 -> 44. The direction was right and the dose was wrong.
 set -u
 REPO=/root/ptcg/repo
 KIND=${KIND:-rerank}
@@ -32,6 +40,7 @@ SCREEN_GAMES=${SCREEN_GAMES:-100}
 COLLECT_GAMES=${COLLECT_GAMES:-24}
 MAX_TARGETS=${MAX_TARGETS:-24}
 SFT_LIMIT=${SFT_LIMIT:-100000}
+RATIO=${RATIO:-0.1}
 STATE=/root/loop_$KIND
 LOG=$STATE/loop.log
 mkdir -p "$STATE"
@@ -105,15 +114,19 @@ for name, ks in [('WORSE',[k for k,v in d.items() if v['verdict']=='WORSE']),
   [ -n "$TARGETS" ] || { say "no targets -- stopping"; break; }
 
   DAG=$STATE/dagger_r$ROUND.jsonl.gz
-  PYTHONPATH=cg-lib python3 tools/collect_dagger.py --decks "$TARGETS" \
-      --model "$(spec "$MODEL")" --games "$COLLECT_GAMES" --out "$DAG" \
-      || { say "collect FAILED -- stopping"; break; }
+  if [ "$ROUND" = 1 ] && [ "${SKIP_FIRST_COLLECT:-0}" = 1 ] && [ -s "$DAG" ]; then
+    say "reusing existing collection $DAG"
+  else
+    PYTHONPATH=cg-lib python3 tools/collect_dagger.py --decks "$TARGETS" \
+        --model "$(spec "$MODEL")" --games "$COLLECT_GAMES" --out "$DAG" \
+        || { say "collect FAILED -- stopping"; break; }
+  fi
 
   NEXT=$((ROUND + 1))
   if [ "$KIND" = qwen ]; then
     MIX=/root/ptcg/repo/data/sft/loop_r$NEXT.jsonl.gz
     python3 tools/dagger_to_sft.py --dagger "$DAG" \
-        --base /root/ptcg/repo/data/sft/v39_0731.jsonl.gz --ratio 0.3 --out "$MIX" \
+        --base /root/ptcg/repo/data/sft/v39_0731.jsonl.gz --ratio "$RATIO" --out "$MIX" \
         || { say "convert FAILED -- stopping"; break; }
     # The 9B always trains from base: continuing would mean restoring the previous
     # domain_embeddings.pt into a resized vocabulary and re-attaching the adapter before the
@@ -128,13 +141,13 @@ for name, ks in [('WORSE',[k for k,v in d.items() if v['verdict']=='WORSE']),
     # accumulate EVERY round's dagger, not just this one
     python3 - "$STATE" "$MIX" <<'PY'
 import glob, gzip, json, random, sys
-state, out = sys.argv[1], sys.argv[2]
+state, out, ratio = sys.argv[1], sys.argv[2], float(sys.argv[3])
 rng = random.Random(0)
 dag = []
 for f in sorted(glob.glob(state + "/dagger_r*.jsonl.gz")):
     with gzip.open(f, "rt") as fh:
         dag += fh.readlines()
-want = int(len(dag) * 0.7 / 0.3)
+want = int(len(dag) * (1 - ratio) / ratio)
 res, n = [], 0
 with gzip.open("/root/ptcg/repo/data/rerank/v39_0731.rerank.jsonl.gz", "rt") as fh:
     for line in fh:
@@ -149,7 +162,8 @@ rows = dag + res
 rng.shuffle(rows)
 with gzip.open(out, "wt") as fh:
     fh.writelines(rows)
-print("[mix] dagger %d (all rounds) + base %d = %d" % (len(dag), len(res), len(rows)))
+print("[mix] dagger %d (all rounds) + base %d = %d (%.0f%% dagger)"
+      % (len(dag), len(res), len(rows), 100.0 * len(dag) / len(rows)))
 PY
     OUT=/root/out/rerank_loop$NEXT
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
