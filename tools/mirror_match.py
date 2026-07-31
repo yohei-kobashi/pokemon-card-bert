@@ -96,6 +96,32 @@ class QwenScorer:
         return lp
 
 
+class HFRerankScorer:
+    """Cross-encoder straight from a training checkpoint -- no ONNX export needed to evaluate."""
+
+    def __init__(self, path, maxlen=768):
+        import torch
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
+        self.torch = torch
+        self.dev = "cuda" if torch.cuda.is_available() else "cpu"
+        self.tok = AutoTokenizer.from_pretrained(path)
+        self.model = AutoModelForSequenceClassification.from_pretrained(path).to(self.dev).eval()
+        self.maxlen = maxlen
+        self.n = 0
+        self.t = 0.0
+
+    def score(self, prompt, cands, obs=None):
+        t0 = time.time()
+        with self.torch.no_grad():
+            enc = self.tok([[prompt, c] for c in cands], padding=True,
+                           truncation="only_first", max_length=self.maxlen,
+                           return_tensors="pt").to(self.dev)
+            s = self.model(**enc).logits.squeeze(-1).float().tolist()
+        self.t += time.time() - t0
+        self.n += 1
+        return s if isinstance(s, list) else [s]
+
+
 def make_agent(spec, deck_name, deck_ids, profile):
     from lm.agent import make_lm_agent
     from tools import rl_config
@@ -105,11 +131,13 @@ def make_agent(spec, deck_name, deck_ids, profile):
     kind, _, path = spec.partition(":")
     if kind == "qwen":
         sc = QwenScorer(path)
+    elif kind == "hf":
+        sc = HFRerankScorer(path)
     elif kind == "rerank":
         from lm.rerank_scorer import OnnxRerankerScorer
         sc = OnnxRerankerScorer(os.path.join(path, "model.onnx"), path)
     else:
-        raise SystemExit("unknown agent spec %r (engine | qwen:<dir> | rerank:<dir>)" % spec)
+        raise SystemExit("unknown agent spec %r (engine | qwen:<dir> | hf:<dir> | rerank:<onnx dir>)" % spec)
     return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
 
 
