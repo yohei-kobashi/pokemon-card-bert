@@ -204,17 +204,24 @@ def main():
         agentA, _ = make_agent(args.a, deck, ids, prof)
         agentB, scB = make_agent(args.b, deck, ids, prof)
         w = l = d = 0
+        # per-seat tally: the aggregate hid that mega_lucario's LM went 8-7 when it always
+        # moved first (tools/diag_pilot.py) but 4-36 with seats alternating. A pilot that
+        # collapses in one seat is a different bug from a pilot that is simply weaker.
+        seat = {0: [0, 0], 1: [0, 0]}
         t0 = time.time()
         verdict = "undecided"
         for g in range(args.max_games):
             # swap seats every game: first-player advantage is a systematic bias, and
             # alternating cancels it without needing to know how large it is
-            if g % 2 == 0:
+            b_seat = 1 if g % 2 == 0 else 0
+            if b_seat == 1:
                 r = play(agentA, agentB, ids, ids)
                 b_won = (r == 1)
             else:
                 r = play(agentB, agentA, ids, ids)
                 b_won = (r == 0)
+            if r is not None:
+                seat[b_seat][0 if b_won else 1] += 1
             if r is None:
                 d += 1
             elif b_won:
@@ -238,6 +245,11 @@ def main():
         print("%-24s B %d-%d = %.1f%% (95%% CI %.1f-%.1f)  draws %d  sup %+.2f ni %+.2f -> %s   %.0fs"
               % (deck, w, l, 100 * p, 100 * (p - 1.96 * se), 100 * (p + 1.96 * se), d,
                  sup, ni, verdict, time.time() - t0), flush=True)
+        for si in (0, 1):
+            sw, sl = seat[si]
+            if sw + sl:
+                print("  B as player %d: %d-%d = %.1f%%" % (si, sw, sl,
+                                                            100.0 * sw / (sw + sl)), flush=True)
         if d > 0.05 * (n + d):
             print("  NOTE: %d/%d games were draws/timeouts and are excluded from the test; a "
                   "pilot that stalls games would hide here." % (d, n + d), flush=True)
@@ -245,7 +257,8 @@ def main():
             print("  challenger scored %d decisions, %.3f s each"
                   % (scB.n, scB.t / scB.n), flush=True)
         results[deck] = {"w": w, "l": l, "d": d, "p": p, "se": se,
-                         "verdict": verdict, "sup": sup, "ni": ni}
+                         "verdict": verdict, "sup": sup, "ni": ni,
+                         "seat0": seat[0], "seat1": seat[1]}
     if args.out:
         with open(args.out, "w") as f:
             json.dump({"a": args.a, "b": args.b, "decks": results}, f, indent=1)
