@@ -67,11 +67,40 @@ class QwenScorer:
         self.torch = torch
         self.maxlen = maxlen
         model, tok = FastLanguageModel.from_pretrained(
-            model_name=adapter if os.path.isdir(adapter) else base, max_seq_length=maxlen,
+            model_name=base, max_seq_length=maxlen,
             load_in_4bit=False, load_in_16bit=True, full_finetuning=False)
-        if os.path.isdir(adapter) and os.path.exists(os.path.join(adapter, "adapter_config.json")):
+        # A --domain-tokens checkpoint was trained on a RESIZED vocabulary (248,320 -> 251,048)
+        # and its 2,971 new embedding rows live in domain_embeddings.pt, not in the LoRA. Load
+        # the checkpoint's tokenizer, resize to match, and restore those rows BEFORE attaching
+        # the adapter -- otherwise every card token either fails to map or maps to a row the
+        # model never trained, and nothing errors.
+        emb = os.path.join(adapter, "domain_embeddings.pt")
+        if os.path.exists(emb):
+            import torch as _t
+            from transformers import AutoTokenizer
+            tk_new = AutoTokenizer.from_pretrained(adapter)
+            base_tk = getattr(tok, "tokenizer", tok)
+            if len(tk_new) != len(base_tk):
+                model.resize_token_embeddings(len(tk_new))
+                blob = _t.load(emb, map_location="cpu")
+                n_base, rows = blob["n_base"], blob["rows"]
+                w = model.get_input_embeddings().weight
+                if w.shape[0] != n_base + rows.shape[0]:
+                    raise SystemExit("domain_embeddings.pt does not fit this model: %d rows "
+                                     "on top of %d, but the embedding is %d"
+                                     % (rows.shape[0], n_base, w.shape[0]))
+                with _t.no_grad():
+                    w[n_base:] = rows.to(device=w.device, dtype=w.dtype)
+                if hasattr(tok, "tokenizer"):
+                    tok.tokenizer = tk_new
+                else:
+                    tok = tk_new
+                print("[qwen] restored %d domain-token rows" % rows.shape[0], flush=True)
+        if os.path.exists(os.path.join(adapter, "adapter_config.json")):
             from peft import PeftModel
             model = PeftModel.from_pretrained(model, adapter)
+        elif not os.path.isdir(adapter):
+            raise SystemExit("no adapter at %r" % adapter)
         model.eval()
         self.model = model
         self.tk = getattr(tok, "tokenizer", tok)

@@ -110,6 +110,9 @@ def main():
                                         "state": serialize_stateless(
                                             obs, deck_ids=ids, deck_name=deck, **fmt),
                                         "candidates": cands, "chosen": lab,
+                                        # the rendered menu is NOT deduped, so the decoder's
+                                        # target is the RAW option index, not `chosen`
+                                        "menu_index": pick_ref[0],
                                         "deck": deck, "seat": lm_seat,
                                         "lm_was_wrong": wrong}) + "\n")
                                     st["written"] += 1
