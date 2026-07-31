@@ -147,7 +147,9 @@ def add_domain_tokens(model, tok, torch):
     # +0.7096 for the same reason. Random loses the (unusable) semantics and buys a geometry the
     # rows can actually be trained apart from, which is the point of training them at all.
     with torch.no_grad():
-        tgt = w[:n_old].float().norm(dim=1).median()
+        # .cpu(): the generator is seeded on CPU for reproducibility, so the scale must come
+        # back from the GPU to meet it
+        tgt = w[:n_old].float().norm(dim=1).median().cpu()
         gen = torch.Generator(device="cpu").manual_seed(3407)
         g = torch.randn(n_added, w.shape[1], generator=gen, dtype=torch.float32)
         g = g / g.norm(dim=1, keepdim=True) * tgt
