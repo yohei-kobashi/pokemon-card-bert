@@ -151,12 +151,23 @@ class HFRerankScorer:
         return s if isinstance(s, list) else [s]
 
 
+_SCORERS = {}
+
+
 def make_agent(spec, deck_name, deck_ids, profile):
+    """The scorer is CACHED across decks. It does not depend on the deck -- only the prompt
+    does -- and rebuilding it per deck loaded a fresh 9B for every one of 63 decks without
+    freeing the last, which filled the card by deck three and left accelerate offloading
+    parameters to the meta device ('Tensor.item() cannot be called on meta tensors'). At 149M
+    that was merely wasteful; at 9B it is fatal."""
     from lm.agent import make_lm_agent
     from tools import rl_config
     fmt = dict(rl_config.PROMPT_FMT)
     if spec == "engine":
         return make_lm_agent(deck_ids, profile, model=None), None
+    if spec in _SCORERS:
+        sc = _SCORERS[spec]
+        return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
     kind, _, path = spec.partition(":")
     if kind == "qwen":
         sc = QwenScorer(path)
@@ -167,6 +178,7 @@ def make_agent(spec, deck_name, deck_ids, profile):
         sc = OnnxRerankerScorer(os.path.join(path, "model.onnx"), path)
     else:
         raise SystemExit("unknown agent spec %r (engine | qwen:<dir> | hf:<dir> | rerank:<onnx dir>)" % spec)
+    _SCORERS[spec] = sc
     return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
 
 
