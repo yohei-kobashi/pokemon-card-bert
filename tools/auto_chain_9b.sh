@@ -44,6 +44,26 @@ if [ ! -f "$ADAPTER/domain_embeddings.pt" ]; then
 fi
 say "adapter ready: $ADAPTER"
 
+# PREFLIGHT. The domain-token load path (resize the vocabulary, restore 2,971 rows from
+# domain_embeddings.pt, then attach the LoRA) could not be tested before this model existed.
+# Two games on one deck prove it loads and scores; failing here costs a minute instead of
+# discovering it 60 decks into the screen, or -- worse -- not discovering it at all because a
+# mis-mapped tokenizer produces plausible garbage rather than an error.
+say "=== 0/4 preflight ==="
+PYTHONPATH=cg-lib timeout 900 python3 tools/mirror_match.py --deck crustle_stall \
+    --a engine --b "qwen:$ADAPTER" --max-games 2 --out /root/preflight_9b.json \
+    2>&1 | tail -20
+if [ ! -s /root/preflight_9b.json ]; then
+  say "STOP: preflight produced no result -- the 9B could not be loaded or scored."
+  exit 1
+fi
+grep -q "restored .* domain-token rows" "$LOG" || {
+  say "STOP: the domain-token rows were never restored. The adapter was trained on a resized"
+  say "      vocabulary; loading it without them mis-maps every card token SILENTLY."
+  exit 1
+}
+say "preflight OK"
+
 say "=== 1/4 mirror screen (qwen, ${SCREEN_GAMES} games/deck) ==="
 DECKS=$(PYTHONPATH=cg-lib python3 -c "
 import sys; sys.path.insert(0,'.'); sys.path.insert(0,'cg-lib')
