@@ -1,0 +1,483 @@
+{
+ "deck": "ns_zoroark",
+ "expected_dmg": [
+  {
+   "pokemon": 293,
+   "attack": "atk403 Copy (Trade attacker)",
+   "formula": "damage = W * maxDisplay(benched N's Pokemon attack damages); maxDisplay in {20 (Zorua only), 70 (Zekrom1305), 170 (Reshiram421), 250 (Zekrom1306)}; W = 2 if defender weak to Darkness else 1; engine auto-selects the MAX-display benched attack (no agent choice); pays only Zoroark's own D,D (source energy cost ignored); if copied attack == Zekrom 1306 (250) then Zoroark CANNOT attack next turn (self-lock)",
+   "verified": true
+  },
+  {
+   "pokemon": 906,
+   "attack": "atk1305 (self-use, 3 colorless payable with D)",
+   "formula": "damage = 70 fixed; not affected by any effects on defender (pierces reduction/resistance)",
+   "verified": true
+  },
+  {
+   "pokemon": 303,
+   "attack": "atk420 (only via copy; 20 per damage counter on ATTACKER=Zoroark when copied)",
+   "formula": "damage = 20 * damage_counters_on_attacking_Pokemon; but display=0 so engine prefers Reshiram atk421(170); observed 200 when copied by a damaged Zoroark",
+   "verified": true
+  },
+  {
+   "pokemon": 906,
+   "attack": "atk1306 self-use (250) — TYPE-DEAD",
+   "formula": "unpayable: needs Fire+Lightning+Lightning+Colorless; deck supplies only Darkness; reachable ONLY as Zoroark copy target",
+   "verified": true
+  },
+  {
+   "pokemon": 303,
+   "attack": "atk421 self-use (170) — TYPE-DEAD",
+   "formula": "unpayable: needs Fire,Fire,Lightning,Colorless; Reshiram can never attack on its own; pure copy-source",
+   "verified": true
+  },
+  {
+   "pokemon": 112,
+   "attack": "atk141 self-use — TYPE-DEAD",
+   "formula": "unpayable: needs Psychic; Munkidori is ability-only (Adrena-Brain needs only Darkness attached)",
+   "verified": true
+  }
+ ],
+ "phases": {
+  "early": {
+   "until": "293 (Zoroark ex) not yet in play OR active Zoroark has < 2 Darkness",
+   "on_plan": "Zorua active by T1-2, evolve to Zoroark ex, 1 copy-source (906/303) on bench, energy loading begun; first_attack_turn <= 4"
+  },
+  "mid": {
+   "until": "293 in play AND active Zoroark reached >=2 Darkness",
+   "on_plan": "attack via 403 every turn; nonattacking_turn_rate <= 0.25; Zekrom benched -> 250/500, else Reshiram -> 170; rotate 2nd Zoroark on self-lock turns"
+  },
+  "late": {
+   "until": "own prizes <= 2 OR deckCount <= 15",
+   "on_plan": "Boss+250 lethal; STOP惰性 Trade/Ball; fire Lillie to refuel if deckCount low; rebuild copy-source via Night Stretcher"
+  }
+ },
+ "doctrines": [
+  {
+   "name": "Burst/Zekrom",
+   "plan": "keep N's Zekrom benched so copy auto-picks 1306 (250; 500 on Darkness-weak); beat the next-turn self-lock by rotating a 2nd armed Zoroark via free retreat (N's Castle) / Switch",
+   "discriminating_metric": "A/B on 906 in play: measure post_ko_attack_rate and nonattacking_turn_rate; Burst wins only if retreat_count>0 on post-250 turns AND a 2nd armed Zoroark exists, else nonattacking_turn_rate ~0.5"
+  },
+  {
+   "name": "Sustain/Reshiram",
+   "plan": "keep N's Reshiram (NOT Zekrom) as the sole high copy-source so copy stays 170 with no self-lock; attack every turn",
+   "discriminating_metric": "A/B on presence of 906 vs only 303 in play: Sustain -> nonattacking_turn_rate low & steady 170; Burst -> higher per-hit but alternating idle turns"
+  }
+ ],
+ "tensions": [
+  {
+   "axes": [
+    "draw_engine (Trade)",
+    "deck_longevity (山寿命)"
+   ],
+   "balance": "Trade fires only while deckCount >= K (K in {12..20}) AND a genuine surplus (basic energy / duplicate) is discardable; monitor hand_size_dist and deckCount TOGETHER"
+  },
+  {
+   "axes": [
+    "burst_250 (self-lock)",
+    "attack_uptime_170"
+   ],
+   "balance": "copy 250 only when a 2nd armed Zoroark or free-retreat (N's Castle) is available; otherwise keep Reshiram as source for 170/turn"
+  },
+  {
+   "axes": [
+    "bench_width (copy-source+ability)",
+    "prize_exposure (small benched Pokemon gusted)"
+   ],
+   "balance": "bench only allow-list {292,293,906,303,112,235}; minimize spare small basics that donate cheap prizes"
+  },
+  {
+   "axes": [
+    "load_active_Zoroark",
+    "attach_to_display-max (Zekrom/Reshiram)"
+   ],
+   "balance": "manual Darkness attach targets active 293 first; attaching to 303 (Reshiram) is always wasted (type-dead)"
+  }
+ ],
+ "hypotheses": [
+  {
+   "id": "H1",
+   "severity": "catastrophic",
+   "claim": "L0 uses Trade unconditionally on every Zoroark every turn (up to 4/turn = discard 4 + draw 8), self-milling the ~47-card deck to 0 in ~4 turns and losing to deckout; also pitches combo pieces via the forced discard",
+   "metric": "loss_share[deckout], trigger_fire[trade], hand_size_dist",
+   "direction": "loss_share[deckout] must be LOW and far below the Trade-on baseline; Trade fires must be gated by deck depth (drop sharply as deckCount falls)",
+   "threshold": {
+    "value": "loss_share[deckout] <= 0.10",
+    "provisional": true,
+    "params": {
+     "K_deck_floor": [
+      "12",
+      "16",
+      "20"
+     ],
+     "max_trades_per_turn": [
+      "1",
+      "2"
+     ]
+    }
+   },
+   "risk_of_overtightening": "stopping Trade too early starves the hand of energy/combo pieces -> can't reach D×2 or assemble copy-source -> tempo/brick loss (watch hand_size_dist not collapsing)",
+   "scenario": "Mirror or any matchup: by ~T5 get 3-4 N's Zoroark ex in play; each turn activate Trade on all of them plus Ultra Ball/Cyrano searches; deckCount drops ~10-13/turn; player begins a turn with 0 cards -> RESULT reason=2 (deckout). Probe-observed: 24/40 games ended by deckout, 13 p0 deckout losses with Trade-on vs 0 with Trade-off.",
+   "violation_symptom": "山切れ負け",
+   "pattern": "山戻し条件発火＋山薄時の掘り停止"
+  },
+  {
+   "id": "H2",
+   "severity": "major",
+   "claim": "L0 attaches Darkness to the display-max Pokemon (Zekrom 250 / Reshiram 170) instead of the active copy-attacker Zoroark (display 0); Reshiram loading is pure waste (type-dead) and active Zoroark stays unarmed",
+   "metric": "energy_attach_share[293], energy_attach_share[906], energy_attach_share[303]",
+   "direction": "energy_attach_share[293] should dominate; share to 303 (Reshiram) should be ~0",
+   "threshold": {
+    "value": "energy_attach_share[293] >= 0.6 AND energy_attach_share[303] <= 0.05",
+    "provisional": true,
+    "params": {
+     "active_zoroark_priority": [
+      "always",
+      "until_2D"
+     ]
+    }
+   },
+   "risk_of_overtightening": "never loading Zekrom removes the emergency 70-damage (atk1305) line and the PP-Up->N's-Plan relay that pre-loads bench then moves energy to active",
+   "violation_symptom": "エネが意図しないポケモンへ",
+   "pattern": "デッキ固有の給餌計画(先貼り・キャップ・順序)"
+  },
+  {
+   "id": "H3",
+   "severity": "major",
+   "claim": "Zoroark's copy attack displays 0 damage, so L0's damage-based logic (lethal check, promotion, energy allocation, gust) undervalues Zoroark and it under-attacks or is not prioritized as the wincon",
+   "metric": "play_rate[293], first_attack_turn, nonattacking_turn_rate",
+   "direction": "once Zoroark is in play with 2D, it should attack nearly every turn (nonattacking_turn_rate low)",
+   "threshold": {
+    "value": "nonattacking_turn_rate <= 0.25 after Zoroark online",
+    "provisional": true,
+    "params": {
+     "copy_dmg_floor_for_perception": [
+      "170",
+      "250"
+     ]
+    }
+   },
+   "risk_of_overtightening": "forcing an attack when copy source is only Zorua (20) wastes a turn that could set up a real copy-source; perception must read the actual benched max, not a constant",
+   "violation_symptom": "スケール技が過小評価される",
+   "pattern": "実打点式を共有知覚へ昇格"
+  },
+  {
+   "id": "H4",
+   "severity": "major",
+   "claim": "Copying Zekrom 1306 (250) applies 'can't attack next turn' to Zoroark; with Zekrom benched the engine ALWAYS auto-copies 250 (max display), so uptime drops to every-other-turn unless a 2nd armed Zoroark is rotated in via free retreat / Switch",
+   "metric": "nonattacking_turn_rate, retreat_count, post_ko_attack_rate",
+   "direction": "on the turn after a 250-copy, the plan must retreat+attack with a 2nd Zoroark OR fall back to Reshiram-170; nonattacking_turn_rate must not spike to ~0.5",
+   "threshold": {
+    "value": "nonattacking_turn_rate <= 0.30 while Zekrom in play",
+    "provisional": true,
+    "params": {
+     "require_2nd_zoroark_before_250": [
+      "true",
+      "false"
+     ],
+     "castle_required": [
+      "true",
+      "false"
+     ]
+    }
+   },
+   "risk_of_overtightening": "forbidding 250 unless perfect rotation exists forfeits burst KOs on 280-HP exs where 170 can't close; keep 250 available when it secures a prize even at the cost of one idle turn",
+   "violation_symptom": "主砲KO後に殴れない",
+   "pattern": "2体目の予備装填(チェイン、上限つき)"
+  },
+  {
+   "id": "H5",
+   "severity": "major",
+   "claim": "L0 treats a Darkness-loaded Reshiram/Munkidori as a 'loaded attacker' (won't retreat, may promote it after a KO) but both are TYPE-DEAD and can never attack -> soft-lock wall / donated tempo",
+   "metric": "retreat_count, nonattacking_turn_rate (conditioned on active in {303,112}), first_attack_turn",
+   "direction": "Reshiram(303)/Munkidori(112) must never be left active as an attacker; if stranded active, retreat/switch immediately",
+   "threshold": {
+    "value": "fraction of turns with active in {303,112} and no attack <= 0.05",
+    "provisional": true,
+    "params": {
+     "type_aware_loaded_check": [
+      "on"
+     ]
+    }
+   },
+   "risk_of_overtightening": "over-eager retreats waste Switch/energy; only force the swap when the active literally cannot pay any of its own attacks with Darkness",
+   "violation_symptom": "型死ポケモンを装填扱い",
+   "pattern": "型対応の装填判定(数でなく型で壁と装填中を区別)"
+  },
+  {
+   "id": "H6",
+   "severity": "major",
+   "claim": "Lillie's Determination is the deck's anti-deckout refuel (shuffles hand into deck, draws 6/8), but L0 fires draw supporters only at hand<=5; with Trade keeping the hand full, Lillie never fires when the DECK is low",
+   "metric": "trigger_fire[lillie], hand_size_dist, deckCount at Lillie fire",
+   "direction": "Lillie should fire when deckCount is low regardless of hand size (deck-refuel trigger, not hand-size trigger)",
+   "threshold": {
+    "value": "P(Lillie fires | deckCount <= R) high, R in {8..12}",
+    "provisional": true,
+    "params": {
+     "R_refuel_deck": [
+      "8",
+      "10",
+      "12"
+     ]
+    }
+   },
+   "risk_of_overtightening": "firing Lillie too eagerly shuffles a strong assembled hand back into the deck, losing an in-hand combo turn (note: reshuffle, not loss)",
+   "violation_symptom": "山切れ負け",
+   "pattern": "山戻しの条件発火＋山薄時の掘り停止"
+  },
+  {
+   "id": "H7",
+   "severity": "minor",
+   "claim": "L0 fires Ultra Ball / Poffin / Cyrano / Pokegear unconditionally each turn, thinning the deck even when nothing is needed (Poffin/Cyrano can't even fetch Zekrom/Reshiram: Poffin<=70HP, Cyrano ex-only) -> accelerates deckout",
+   "metric": "play_rate[1121], play_rate[1086], play_rate[1205], correlation with deckCount",
+   "direction": "search/ball play_rate must fall sharply as deckCount drops and when the target is already in hand/play",
+   "threshold": {
+    "value": "ball/search play_rate near 0 when deckCount <= K",
+    "provisional": true,
+    "params": {
+     "K_search_floor": [
+      "12",
+      "16"
+     ]
+    }
+   },
+   "risk_of_overtightening": "throttling search too hard slows finding Zoroark line / copy source in the opening -> late first_attack_turn",
+   "violation_symptom": "山切れ負け",
+   "pattern": "山薄時の掘り停止"
+  },
+  {
+   "id": "H8",
+   "severity": "major",
+   "claim": "Boss's Orders / Prime Catcher gust value is huge with the real 250/500 copy, but L0 only gusts when its active's DISPLAY damage >= 60; Zoroark shows 0 so gust may never fire (value left on the table)",
+   "metric": "gust_targets, trigger_fire[boss], play_rate[1182]",
+   "direction": "Boss/Prime should fire when active Zoroark is armed and a benched opponent target is KO-able / prize-relevant",
+   "threshold": {
+    "value": "P(Boss fires | Zoroark armed AND KOable bench target) high",
+    "provisional": true,
+    "params": {
+     "perceived_copy_dmg": [
+      "170",
+      "250"
+     ]
+    }
+   },
+   "risk_of_overtightening": "gusting before Zoroark is armed, or onto a non-KOable target, wastes the supporter turn (competes with N's Plan / Lillie for the 1 supporter slot)",
+   "violation_symptom": "gust が価値を逃す",
+   "pattern": "サイド期待値・実打点ベースの対象選択"
+  },
+  {
+   "id": "H9",
+   "severity": "minor",
+   "claim": "Crushing Hammer (coin flip) and Budew (item lock) are situational disruption L0 may burn blindly: Hammer when opponent has no energy to strip, Budew when opponent is not item-dependent",
+   "metric": "play_rate[1120], play_rate[235], trigger_fire on empty targets",
+   "direction": "Hammer only when opponent has attachable energy on a threat; Budew only early vs item-reliant opponents",
+   "threshold": {
+    "value": "wasted-target fire rate <= 0.1",
+    "provisional": true,
+    "params": {
+     "require_opp_energy_for_hammer": [
+      "true"
+     ]
+    }
+   },
+   "risk_of_overtightening": "never playing disruption forfeits real energy-denial / tempo vs setup decks",
+   "violation_symptom": "妨害カードの浪費/腐り",
+   "pattern": "相手盤面条件に限定"
+  },
+  {
+   "id": "H10",
+   "severity": "minor",
+   "claim": "L0 uses Munkidori Adrena-Brain unconditionally; it needs Darkness attached and only helps when own damage counters exist AND a useful opponent target exists, else it is a wasted ability activation (and can move counters off a Pokemon you wanted damaged for Reshiram-420, though the engine ignores 420 anyway)",
+   "metric": "trigger_fire[munkidori], play_rate[112]",
+   "direction": "Adrena-Brain fires only when Munkidori has Darkness AND own damage counters exist AND moving them KOs/advances vs opponent",
+   "threshold": {
+    "value": "empty-value Munkidori fire rate <= 0.1",
+    "provisional": true,
+    "params": {
+     "require_own_counters_and_target": [
+      "true"
+     ]
+    }
+   },
+   "risk_of_overtightening": "over-gating loses the snipe/finisher and the self-heal that keeps a damaged Zoroark alive",
+   "violation_symptom": "妨害カードの浪費/腐り",
+   "pattern": "自己害効果の無条件発火(盤面状態ゲート)"
+  }
+ ],
+ "card_intents": {
+  "7": {
+   "name": "Basic {D} Energy x9",
+   "trigger": "attach to active 293 first; PP Up + N's Plan relay if short",
+   "expected_play_rate": 1.0
+  },
+  "292": {
+   "name": "N's Zorua x4",
+   "trigger": "T1 active / evolution fodder; keep >=1",
+   "expected_play_rate": 0.9
+  },
+  "293": {
+   "name": "N's Zoroark ex x4",
+   "trigger": "active attacker (403); Trade ONLY if deckCount>=K and surplus discardable",
+   "expected_play_rate": 1.0
+  },
+  "906": {
+   "name": "N's Zekrom x2",
+   "trigger": "bench 1 for 250-burst copy source; self-70 (1305) as emergency",
+   "expected_play_rate": 0.6
+  },
+  "303": {
+   "name": "N's Reshiram x2",
+   "trigger": "bench 1 as 170 copy source (type-dead, NEVER active, NEVER hand-attach)",
+   "expected_play_rate": 0.5
+  },
+  "112": {
+   "name": "Munkidori x2",
+   "trigger": "bench; Adrena-Brain when D attached + own counters + target",
+   "expected_play_rate": 0.35
+  },
+  "235": {
+   "name": "Budew x1",
+   "trigger": "early item-lock wall vs item-reliant opponent",
+   "expected_play_rate": 0.3
+  },
+  "1121": {
+   "name": "Ultra Ball x4",
+   "trigger": "need Pokemon not in hand, 2 discardable, deckCount>=K",
+   "expected_play_rate": 0.7
+  },
+  "1152": {
+   "name": "Poke Pad x3",
+   "trigger": "fetch non-ex (Zekrom/Reshiram/Munkidori/Zorua) when short",
+   "expected_play_rate": 0.6
+  },
+  "1086": {
+   "name": "Buddy-Buddy Poffin x2",
+   "trigger": "early thin bench; only fetches <=70HP (Zorua/Budew)",
+   "expected_play_rate": 0.6
+  },
+  "1097": {
+   "name": "Night Stretcher x3",
+   "trigger": "copy-source/energy in trash and needed in play",
+   "expected_play_rate": 0.6
+  },
+  "1123": {
+   "name": "Switch x2",
+   "trigger": "escape type-dead active (303/112) or rotate off 250 self-lock",
+   "expected_play_rate": 0.5
+  },
+  "1113": {
+   "name": "N's PP Up x2",
+   "trigger": "trash Darkness -> load benched N's (Zoroark/copy-source)",
+   "expected_play_rate": 0.5
+  },
+  "1120": {
+   "name": "Crushing Hammer x2",
+   "trigger": "opponent threat has attachable energy",
+   "expected_play_rate": 0.4
+  },
+  "1253": {
+   "name": "N's Castle x2",
+   "trigger": "enable free-retreat 2-Zoroark rotation / type-dead escape",
+   "expected_play_rate": 0.5
+  },
+  "1088": {
+   "name": "Prime Catcher x1 (ACE)",
+   "trigger": "gust lethal when Boss unavailable and bench KOable",
+   "expected_play_rate": 0.35
+  },
+  "1205": {
+   "name": "Cyrano x3",
+   "trigger": "Zoroark ex count short (ex-only search)",
+   "expected_play_rate": 0.7
+  },
+  "1182": {
+   "name": "Boss's Orders x3",
+   "trigger": "Zoroark armed AND KOable/prize-relevant benched target",
+   "expected_play_rate": 0.7
+  },
+  "1221": {
+   "name": "N's Plan x3",
+   "trigger": "active Zoroark < 2 Darkness and bench has Darkness",
+   "expected_play_rate": 0.6
+  },
+  "1227": {
+   "name": "Lillie's Determination x3",
+   "trigger": "deckCount <= R (refuel) OR hand empty -- deck-low, not hand<=5",
+   "expected_play_rate": 0.5
+  },
+  "1122": {
+   "name": "Pokegear 3.0 x3",
+   "trigger": "key supporter (Boss/Lillie/Cyrano) missing",
+   "expected_play_rate": 0.7
+  }
+ },
+ "axes": {
+  "speed": 3,
+  "power_curve": 4,
+  "consistency": 2,
+  "recovery": 3,
+  "adaptability": 2,
+  "resource_economy": 2,
+  "disruption_resistance": 3,
+  "prize_race": 3,
+  "deck_longevity_invented": 1
+ },
+ "disposition_ledger": {
+  "H1": null,
+  "H2": null,
+  "H3": null,
+  "H4": null,
+  "H5": null,
+  "H6": null,
+  "H7": null,
+  "H8": null,
+  "H9": null,
+  "H10": null
+ },
+ "lines": [
+  {
+   "name": "rotation_250",
+   "verified_by": "P0.5 forced-choice probes (tmp/probe_zoro_rotation.py): E4 lock real x10; E2 rotation->consecutive-turn 250s x5; E1 Castle retreat free 4/4; E3 PP Up discard-attach x8",
+   "setup": "T<=4: evolve Zoroark #1 and arm to 2D; bench Zorua #2 (-> Zoroark #2) + Reshiram provider; play N's Castle",
+   "loop": "every turn: copy Rampaging Thunder 250 while rotation online (else Virtuous Flame 170); when locked, FREE-retreat into armed #2; Trade digs; discard D preferentially as PP Up fuel; N's PP Up re-arms the benched body from discard",
+   "finisher": "Boss's Orders a 250/500-koable bench target; Munkidori (1D, after both Zoroark armed) pre-damages out-of-reach bodies 30/turn",
+   "invariants": [
+    {
+     "id": "castle_up",
+     "type": "stadium_in_play",
+     "cid": 1253,
+     "by_turn": 6
+    },
+    {
+     "id": "two_armed",
+     "type": "armed_bodies",
+     "cid": 293,
+     "energy": 7,
+     "min_energy": 2,
+     "count": 2,
+     "by_turn": 10
+    },
+    {
+     "id": "attacks_flow",
+     "type": "attack_rate_after",
+     "turn": 6,
+     "min": 0.8
+    }
+   ],
+   "combo_edges": [
+    {
+     "edge": "Trade/UltraBall discard D -> N's PP Up re-attach from discard",
+     "individually_negative": true
+    },
+    {
+     "edge": "N's Castle -> free retreat -> lock-free 250/turn rotation",
+     "individually_negative": true
+    },
+    {
+     "edge": "both Zoroark armed -> 1D Munkidori Adrena-Brain",
+     "individually_negative": true
+    }
+   ]
+  }
+ ]
+}

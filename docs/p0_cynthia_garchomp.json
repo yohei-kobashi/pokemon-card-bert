@@ -1,0 +1,473 @@
+{
+ "deck": "cynthia_garchomp",
+ "expected_dmg": [
+  {
+   "pokemon": 381,
+   "attack": "Corkscrew Dive",
+   "formula": "100 + 30*(R + PPP)  where R=#Cynthia's Roserade(342) in play (Cheer On to Glory, stacks additively), PPP=#Premium Power Pro used this turn; buffs apply only vs opponent Active, before Weakness. Keeps energy, draws to 6.",
+   "verified": true
+  },
+  {
+   "pokemon": 381,
+   "attack": "Draconic Buster",
+   "formula": "260 + 30*(R + PPP); DISCARDS ALL ENERGY from this Pokemon after use",
+   "verified": true
+  },
+  {
+   "pokemon": 380,
+   "attack": "Dragonslice",
+   "formula": "40 + 30*(R + PPP)",
+   "verified": true
+  },
+  {
+   "pokemon": 379,
+   "attack": "Rock Hurl",
+   "formula": "20 + 30*(R + PPP); ignores Resistance",
+   "verified": true
+  },
+  {
+   "pokemon": 387,
+   "attack": "Raging Curse",
+   "formula": "10*(total damage counters on your Benched Cynthia's Pokemon) + 30*(R + PPP); ignores Weakness. Normally ~0 (nothing self-inflicts bench damage).",
+   "verified": true
+  },
+  {
+   "pokemon": 342,
+   "attack": "Leaf Step",
+   "formula": "TYPE-DEAD: cost [G][C][C] requires 1 Grass energy; deck has 0 Grass energy; Neo Upper on a Stage1 provides only C. Never castable.",
+   "verified": true
+  },
+  {
+   "pokemon": 381,
+   "attack": "Weakness interaction",
+   "formula": "(base + 30*(R+PPP)) * 2 vs Grass-weak? no; our attackers are Fighting, opponent weakness applies to our type. Buffs before Weakness per text.",
+   "verified": false
+  }
+ ],
+ "mechanics_verified": {
+  "buff_stack_plus30": {
+   "claim": "Roserade Cheer On to Glory and Premium Power Pro stack additively at +30 each (observed 100/130/160/190/220 for Corkscrew)",
+   "verified": true
+  },
+  "draconic_discards_all_energy": {
+   "claim": "After Draconic Buster, all attached energy moves to discard (log fromArea8->toArea3)",
+   "verified": true
+  },
+  "neo_upper_pays_FF_on_stage2": {
+   "claim": "Neo Upper alone pays [F][F] on Stage2 Garchomp (Draconic Buster fired with single (10,) discard signature)",
+   "verified": true
+  },
+  "rare_candy_skip": {
+   "claim": "Rare Candy evolves Gible(379) directly to Garchomp ex(381) skipping Gabite (evolve pair (381,379) observed)",
+   "verified": true
+  },
+  "fighting_line_weak_grass": {
+   "claim": "Garchomp/Gible/Gabite/Spiritomb weakness=Grass(type1); Roselia/Roserade weak Fire(type2); Garchomp retreat 0",
+   "verified": true
+  }
+ },
+ "phases": {
+  "early": {
+   "until": "turn<=2 AND Garchomp not yet in play",
+   "on_plan": "Gible line + >=1 Roselia in play; F>=1 in hand/board; Gabite Champion's Call digging parts; bench built via Poffin/Poke Pad"
+  },
+  "mid": {
+   "until": "Garchomp in play AND Roserade in play >=1",
+   "on_plan": "Garchomp active with F>=1; Corkscrew Dive used every turn at real >=130; energy retained (no non-attacking turns)"
+  },
+  "late": {
+   "until": "prizes_taken>=2 OR opponent fat target exposed",
+   "on_plan": "nonattacking_turn_rate ~0; post_ko_attack_rate high; Draconic Buster only vs 300+HP with reload/Neo Upper/KO justification; 2nd Garchomp prepped"
+  }
+ },
+ "doctrines": [
+  {
+   "name": "D1_corkscrew_engine",
+   "plan": "Primary: Corkscrew Dive every turn (keeps energy, draws to 6), sustained 130-190 with Roserade buff; Draconic Buster reserved as conditional finisher only.",
+   "discriminating_metric": "play_rate[531 Corkscrew] >> play_rate[532 Draconic]; nonattacking_turn_rate low"
+  },
+  {
+   "name": "D2_draconic_burst",
+   "plan": "Bank 2 energy or use Neo Upper, alternate Draconic Buster 320+ for fast 2-prize KOs on exes, rebuild energy between.",
+   "discriminating_metric": "play_rate[532] high AND nonattacking_turn_rate-after-draconic low (Neo Upper/Night Stretcher available); if high nonattacking after DB -> D2 refuted, D1 wins"
+  }
+ ],
+ "tensions": [
+  {
+   "axes": [
+    "power_burst_draconic",
+    "energy_economy_sustain"
+   ],
+   "balance": "fire Draconic Buster only if KO-securing AND (paid by Neo Upper OR reload held OR 2 energy bankable); else Corkscrew"
+  },
+  {
+   "axes": [
+    "consistency_digging",
+    "deckout_horizon"
+   ],
+   "balance": "throttle unconditional search when parts already assembled AND deckCount <= K (K in {8,12,16})"
+  },
+  {
+   "axes": [
+    "speed_garchomp_first",
+    "power_ceiling_roserade_online"
+   ],
+   "balance": "after Garchomp path secured, bring >=1 Roserade online by mid (buff_online_turn <= 4)"
+  },
+  {
+   "axes": [
+    "board_development_bench",
+    "gust_exposure"
+   ],
+   "balance": "bench = minimal 1-prize basics (1 Roselia + 1 spare Gible) + Roserade"
+  }
+ ],
+ "hypotheses": [
+  {
+   "id": "H1",
+   "severity": "catastrophic",
+   "claim": "Engine fires Draconic Buster (discards all energy) when Corkscrew would already KO or when no reload is held, causing an energy drought and non-attacking rebuild turns.",
+   "metric": "trigger_fire[draconic_buster], nonattacking_turn_rate, play_rate[532]",
+   "direction": "nonattacking_turn_rate in the turns following a Draconic Buster must stay <= baseline; Draconic must not be chosen when Corkscrew(+buff) real-damage already >= opponent active HP",
+   "threshold": {
+    "value": "nonattacking_turn_rate_after_draconic <= 0.10",
+    "provisional": true,
+    "params": {
+     "reload_window": [
+      "1",
+      "2"
+     ],
+     "corkscrew_ko_margin": [
+      "0",
+      "10"
+     ]
+    }
+   },
+   "risk_of_overtightening": "If Draconic is blocked too hard, the deck loses its only way to punch through 300+HP exes and stalls behind a 100-190 Corkscrew wall",
+   "scenario": "Garchomp active with exactly 2 F energy (no Neo Upper/Night Stretcher in hand), opponent active 130 HP where Corkscrew+1Roserade(=130) already KOs; engine picks display-max Draconic Buster (260), KOs, discards both energy, then has 2 empty turns rebuilding while opponent swings back.",
+   "violation_symptom": "self_harm_unconditional_fire / tempo_collapse",
+   "pattern": "board-state gate on self-harm effect + real-damage comparison Corkscrew-vs-Draconic"
+  },
+  {
+   "id": "H2",
+   "severity": "major",
+   "claim": "The display-damage evolution heuristic deprioritizes Roserade (display 80) so Cheer On to Glory never comes online and Corkscrew stays at base 100.",
+   "metric": "play_rate[342], bench presence of 342, power_curve (real Corkscrew damage distribution)",
+   "direction": "by mid phase, >=1 Roserade should be in play; Corkscrew real damage should exceed 100 (buffed) in a majority of attacks",
+   "threshold": {
+    "value": "roserade_in_play_by_turn4 >= 0.6",
+    "provisional": true,
+    "params": {
+     "target_turn": [
+      "3",
+      "4",
+      "5"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Forcing Roserade too early diverts Poke Pad/Rare Candy/bench from the Garchomp path and slows first attack",
+   "violation_symptom": "key_evolution_play_rate_low",
+   "pattern": "prioritize evolution by ability value (buff source) not post-evo display damage"
+  },
+  {
+   "id": "H3",
+   "severity": "major",
+   "claim": "Energy should concentrate on Garchomp; Neo Upper wasted if attached to Gible/Gabite (provides only C, cannot pay their [F] attacks), and no energy on type-dead Roserade/Roselia/Spiritomb.",
+   "metric": "energy_attach_share[381 vs others], energy_attach_share[10 Neo Upper]",
+   "direction": "share of energy on 381 (Garchomp) high; Neo Upper attached only when target is Stage2 Garchomp; ~0 energy on 342/341/387",
+   "threshold": {
+    "value": "energy_attach_share[381] >= 0.7",
+    "provisional": true,
+    "params": {
+     "min_share_garchomp": [
+      "0.6",
+      "0.7",
+      "0.8"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Blocking all pre-evolution attach kills the valid Gible/Gabite pre-attach that carries energy up to Garchomp",
+   "violation_symptom": "energy_to_wrong_pokemon",
+   "pattern": "deck-specific feeding plan: pre-attach on Garchomp line only; Neo Upper gated to Stage2"
+  },
+  {
+   "id": "H4",
+   "severity": "major",
+   "claim": "Deck should be attacking (Corkscrew) by ~turn 2-3; a two-Stage2+Stage1 setup risks being slow to first attack.",
+   "metric": "first_attack_turn",
+   "direction": "first_attack_turn should be small (attack online early)",
+   "threshold": {
+    "value": "first_attack_turn <= 3 in majority",
+    "provisional": true,
+    "params": {
+     "target_turn": [
+      "2",
+      "3",
+      "4"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Rushing a naked Garchomp with no Roserade/energy trades a weak first hit for tempo and exposes a 2-prize attacker",
+   "violation_symptom": "slow_setup",
+   "pattern": "attack-priority balance; Rare Candy usage to compress setup"
+  },
+  {
+   "id": "H5",
+   "severity": "minor",
+   "claim": "Unconditional search (Poffin/Poke Pad/Gong) plus Corkscrew drawing to 6 accelerates deckout in grindy games (only 9 energy, thin deck).",
+   "metric": "loss_share[deckout], deckCount trajectory",
+   "direction": "loss_share[deckout] should be low; search should throttle when parts assembled and deck thin",
+   "threshold": {
+    "value": "loss_share[deckout] <= 0.08",
+    "provisional": true,
+    "params": {
+     "deck_thin_gate_K": [
+      "8",
+      "12",
+      "16"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Throttling search too early causes bricks/missing pieces, which is a worse failure than rare deckouts",
+   "violation_symptom": "deckout",
+   "pattern": "search throttle: stop digging when parts complete AND deckCount<=K"
+  },
+  {
+   "id": "H6",
+   "severity": "minor",
+   "claim": "Type-dead Roserade/Roselia (F energy pays only colorless Spike Sting; Leaf Step uncastable) may be treated as a loaded attacker and kept active, or block the active spot.",
+   "metric": "retreat_count, active-pokemon identity distribution, nonattacking_turn_rate",
+   "direction": "Roserade/Roselia should not be the attacking active; if stuck there, pivot to Garchomp",
+   "threshold": {
+    "value": "active==342/341 attack_rate ~ 0",
+    "provisional": true,
+    "params": {}
+   },
+   "risk_of_overtightening": "Over-eager pivoting wastes Switch/retreat and can strand energy",
+   "violation_symptom": "type_dead_treated_as_loaded",
+   "pattern": "type-aware loaded check: Grass-cost attackers with 0 Grass supply are walls not attackers"
+  },
+  {
+   "id": "H7",
+   "severity": "minor",
+   "claim": "Boss's Orders gust target selection should use real-damage and prize value (KO a benched threat / snipe a 1-prize / isolate their attacker), not a generic display-damage rule.",
+   "metric": "gust_targets, gust->KO conversion",
+   "direction": "gust should predominantly lead to a KO or a strategic isolation, not random benched pick",
+   "threshold": {
+    "value": "gust_leads_to_ko_rate >= 0.5",
+    "provisional": true,
+    "params": {
+     "min_ko_rate": [
+      "0.4",
+      "0.5",
+      "0.6"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Requiring a guaranteed KO forgoes valuable tempo gusts (isolating a fat setup Pokemon)",
+   "violation_symptom": "gust_value_leak",
+   "pattern": "prize-EV + real-damage based gust target selection"
+  },
+  {
+   "id": "H8",
+   "severity": "major",
+   "claim": "After the main Garchomp is KO'd (especially right after a Draconic Buster left it empty), no second attacker is loaded, so post-KO attack rate collapses.",
+   "metric": "post_ko_attack_rate",
+   "direction": "post_ko_attack_rate should stay high (a 2nd Garchomp or Gabite ready to swing)",
+   "threshold": {
+    "value": "post_ko_attack_rate >= 0.7",
+    "provisional": true,
+    "params": {
+     "chain_depth": [
+      "1",
+      "2"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Over-investing in a 2nd loaded Garchomp before it is needed dilutes the primary attack and energy",
+   "violation_symptom": "main_ko_then_no_swing",
+   "pattern": "2nd Garchomp reserve loading with a cap (chain requirement)"
+  },
+  {
+   "id": "H9",
+   "severity": "minor",
+   "claim": "Draw supporters (Lillie's Determination / Judge) may fire on a completed hand and shuffle away assembled win-condition pieces, or under-fire because Corkscrew keeps hand at 6.",
+   "metric": "trigger_fire[lillie], trigger_fire[judge], hand_size_dist",
+   "direction": "Lillie/Judge should fire when hand lacks immediate action, not when a Rare Candy+Garchomp hand is held",
+   "threshold": {
+    "value": "lillie_fire_on_good_hand_rate <= 0.15",
+    "provisional": true,
+    "params": {
+     "hand_action_threshold": [
+      "0",
+      "1",
+      "2"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Blocking Lillie makes the deck brick when it genuinely needs a redraw",
+   "violation_symptom": "hand_dump_of_wincon",
+   "pattern": "draw-supporter gate on hand-action content, not raw hand size"
+  },
+  {
+   "id": "H10",
+   "severity": "minor",
+   "claim": "Cynthia's Power Weight (+70 HP -> 400) should be attached to the attacking Garchomp before it is exposed; if the engine ignores it, Garchomp dies to 330-breaking hits it could have survived.",
+   "metric": "play_rate[1173], attach->survival correlation",
+   "direction": "Power Weight play_rate should be meaningful and land on Garchomp before the opponent's swing",
+   "threshold": {
+    "value": "play_rate[1173] >= 0.5 (conditional on Garchomp in play)",
+    "provisional": true,
+    "params": {
+     "min_play_rate": [
+      "0.4",
+      "0.5",
+      "0.6"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Spending the tool slot/turn on HP when a lethal is available wastes tempo",
+   "violation_symptom": "defensive_tool_unused",
+   "pattern": "attach defensive tool to primary attacker pre-exposure"
+  }
+ ],
+ "card_intents": {
+  "379": {
+   "name": "Cynthia's Gible",
+   "trigger": "always play to board early; F pre-attach ok",
+   "expected_play_rate": 1.0
+  },
+  "380": {
+   "name": "Cynthia's Gabite",
+   "trigger": "Gible in play & not evolved; Champion's Call each turn to dig parts",
+   "expected_play_rate": 0.8
+  },
+  "381": {
+   "name": "Cynthia's Garchomp ex",
+   "trigger": "Gabite in play OR Rare Candy available; then Corkscrew every turn",
+   "expected_play_rate": 1.0
+  },
+  "341": {
+   "name": "Cynthia's Roselia",
+   "trigger": "early bench >=1 as Roserade seed",
+   "expected_play_rate": 0.9
+  },
+  "342": {
+   "name": "Cynthia's Roserade",
+   "trigger": "Roselia in play, evolve by mid for +30 buff; NEVER attack Leaf Step (type-dead)",
+   "expected_play_rate": 0.8
+  },
+  "387": {
+   "name": "Cynthia's Spiritomb",
+   "trigger": "only when own bench Cynthia's have many damage counters and Raging Curse real-dmg >= target HP; else dead",
+   "expected_play_rate": 0.05
+  },
+  "6": {
+   "name": "Basic F Energy",
+   "trigger": "attach to Garchomp/Gible line",
+   "expected_play_rate": 1.0
+  },
+  "20": {
+   "name": "Rock Fighting Energy",
+   "trigger": "attach to Garchomp (also grants opponent-attack-effect immunity)",
+   "expected_play_rate": 1.0
+  },
+  "10": {
+   "name": "Neo Upper Energy",
+   "trigger": "attach ONLY to Stage2 Garchomp (pays [F][F]); never on Gible/Gabite (C only)",
+   "expected_play_rate": 0.5
+  },
+  "1227": {
+   "name": "Lillie's Determination",
+   "trigger": "hand lacks immediate action (not a completed hand); hand<=A, A in {4,5,6}",
+   "expected_play_rate": 0.7
+  },
+  "1182": {
+   "name": "Boss's Orders",
+   "trigger": "real-dmg >= benched target HP OR snipe 1-prize OR isolate their attacker",
+   "expected_play_rate": 0.6
+  },
+  "1086": {
+   "name": "Buddy-Buddy Poffin",
+   "trigger": "early or board short; suppress when deck thin & board complete",
+   "expected_play_rate": 0.7
+  },
+  "1152": {
+   "name": "Poke Pad",
+   "trigger": "missing a non-rulebox part; stop when parts held & deck thin",
+   "expected_play_rate": 0.7
+  },
+  "1142": {
+   "name": "Fighting Gong",
+   "trigger": "board energy < target OR need F basic Pokemon",
+   "expected_play_rate": 0.6
+  },
+  "1173": {
+   "name": "Cynthia's Power Weight",
+   "trigger": "Garchomp in play & no tool; attach pre-exposure for 400 HP",
+   "expected_play_rate": 0.7
+  },
+  "1225": {
+   "name": "Hilda",
+   "trigger": "need an evolution + energy simultaneously",
+   "expected_play_rate": 0.5
+  },
+  "1141": {
+   "name": "Premium Power Pro",
+   "trigger": "+30 this turn crosses a KO threshold OR helps Draconic punch an ex",
+   "expected_play_rate": 0.4
+  },
+  "1079": {
+   "name": "Rare Candy",
+   "trigger": "Gible in play (not this-turn) & Garchomp in hand & not first turn",
+   "expected_play_rate": 0.6
+  },
+  "1213": {
+   "name": "Judge",
+   "trigger": "own hand <= 3 & opponent hand large",
+   "expected_play_rate": 0.15
+  },
+  "1122": {
+   "name": "Pokegear 3.0",
+   "trigger": "no Supporter in hand & a wanted Supporter exists",
+   "expected_play_rate": 0.4
+  },
+  "1123": {
+   "name": "Switch",
+   "trigger": "active is unsuitable (Roselia/type-dead) and cannot retreat; Garchomp is free-retreat so rarely needed",
+   "expected_play_rate": 0.2
+  },
+  "1097": {
+   "name": "Night Stretcher",
+   "trigger": "trash has F energy or Garchomp/Gible and reload/rebuild wanted (key after Draconic)",
+   "expected_play_rate": 0.4
+  }
+ },
+ "axes": {
+  "speed": 3,
+  "power_curve": 4,
+  "consistency": 3,
+  "recovery": 3,
+  "adaptability": 3,
+  "resource_economy": 2,
+  "disruption_resistance": 3,
+  "side_race": 3,
+  "buff_online": 3,
+  "reload_after_nuke": 2
+ },
+ "l2_needed": true,
+ "l2_rationale": "L0 display-max heuristic deterministically triggers two deck-specific misplays: (H1) Draconic Buster spamming that self-discards all energy = catastrophic tempo collapse, and (H2) deprioritizing the Roserade buff-source evolution so Corkscrew stays at base 100. Both require state gates (real-damage comparison, ability-value evolution) unreachable at L1. L0 is already correct on abilities (harmless), energy concentration onto Garchomp, and gust firing, so L2 intervention narrows to 3 rules: Draconic gate, Roserade priority, search throttle.",
+ "disposition_ledger": {
+  "H1": "implemented (CynthiaGarchompL2.decide_attack: Corkscrew-if-KO, Draconic reserved)",
+  "H2": "skipped (L0 already evolves Roselia->Roserade when offered; not a measured symptom)",
+  "H3": "implemented (decide_energy_target concentrates F on Garchomp)",
+  "H4": "no_change_needed (first_attack_turn already ~3)",
+  "H5": "covered by fleet deck_low guard",
+  "H6": "covered by fleet type-aware energy",
+  "H7": "skipped (minor; L0 gust adequate here)",
+  "H8": "implemented (decide_energy_target 2-cap active Garchomp then arm bench Garchomp)",
+  "H9": "skipped (L0 gates draw supporters by hand size already)",
+  "H10": "skipped (minor)"
+ },
+ "loop_outcome": "L2 built + measured; field vs legacy = -0.2% (PARITY, not beyond). Valid terminal state."
+}

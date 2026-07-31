@@ -1,0 +1,63 @@
+{
+  "deck": "marnie_grimmsnarl",
+  "expected_dmg": [
+    {"pokemon": 648, "attack": "Shadow Bullet", "formula": "active = 180 (x2 vs Grass weakness); plus 30 fixed to 1 chosen opponent benched Pokemon (ignores Weakness/Resistance)", "verified": true},
+    {"pokemon": 112, "attack": "Adrena-Brain (ability)", "formula": "effective_reach = 30 * (number_of_Munkidori_with_>=1_Darkness_energy); moves up to 3 damage counters per Munkidori from own damaged Pokemon onto 1 opponent Pokemon; once per turn per Munkidori", "verified": true},
+    {"pokemon": 104, "attack": "Freezing Shroud (ability)", "formula": "each Pokemon Checkup: +10 (1 counter) to EVERY Ability Pokemon on both sides except Froslass; opp_chip = 10 * n_opp_ability_pokemon, self_chip = 10 * n_own_ability_pokemon(Munkidori+Grimmsnarl)", "verified": true},
+    {"pokemon": 647, "attack": "Corkscrew Punch", "formula": "60 flat, cost [D][D]", "verified": true},
+    {"pokemon": 112, "attack": "Mind Bend", "formula": "TYPE-DEAD: cost [P][C], deck has no Psychic energy -> never usable", "verified": true},
+    {"pokemon": 104, "attack": "Frost Smash", "formula": "TYPE-DEAD: cost [W][C], deck has no Water energy -> never usable", "verified": true}
+  ],
+  "phases": {
+    "early": {"until": "648_in_play == false OR punk_up_fired == false", "on_plan": "own_active is Impidimp(646) by T1-2; bench has Munkidori+Snorunt+spare Impidimp; Spikemuth Gym in play; evolution line (648 + RareCandy/Morgrem) in hand or fetched by Dawn/Spikemuth by T2-3"},
+    "mid": {"until": "own_prizes_taken < 3", "on_plan": "Shadow Bullet used every turn (180+30); >=1 Munkidori has Darkness energy so Adrena-Brain fires; Froslass in play; bench-30 and Adrena-Brain aimed at the SAME finish-off target"},
+    "late": {"until": "game_end", "on_plan": "Boss's Orders pulls a KOable/high-value target; chain 2nd Grimmsnarl via Night Stretcher+Rare Candy; Unfair Stamp only after own KO; keep attacking every turn"}
+  },
+  "hypotheses": [
+    {"id": "H1", "claim": "Munkidori(112) is a type-dead attacker (Mind Bend needs [P][C], deck has no Psychic); it must be used as an ability engine only and receive at most 1 Darkness energy, never be set active as an attacker", "metric": "energy_attach_share[112]", "expect": "0 < share_per_Munkidori <= 1 energy; first_attack_turn attributed to 112 == never", "violation_symptom": "energy to type-dead mon / key ability play_rate ~0", "pattern": "エネが意図しないポケモンへ"},
+    {"id": "H2", "claim": "Munkidori must be hand-attached 1 Darkness to turn on Adrena-Brain; Punk Up cannot fuel it (Marnie's-only, verified). If engine dumps all hand attaches on Grimmsnarl, Adrena-Brain never fires and Froslass self-damage accumulates on own Munkidori (observed 70/110)", "metric": "trigger_fire[adrena_brain]", "expect": "trigger_fire[adrena_brain] > 0 per game once 648 online; own Munkidori KO'd by self-chip == rare", "violation_symptom": "キーカードのプレイ率~0", "pattern": "発火条件を盤面/手札の所持状態ベースに置換"},
+    {"id": "H3", "claim": "Punk Up (up to 5 Darkness from deck on evolve) should not be dumped 5-on-one; put ~2 on active Grimmsnarl and pre-load a 2nd Marnie's line for chaining, not stockpile dead energy on one attacker", "metric": "energy_attach_share[648]", "expect": "active Grimmsnarl energy caps ~2-3; remainder spread to bench Marnie's line", "violation_symptom": "エネが意図しないポケモンへ / 主砲KO後に殴れない", "pattern": "デッキ固有の給餌計画（先貼り・キャップ・順序）"},
+    {"id": "H4", "claim": "Snorunt(103)/Froslass(104) are zero-energy ability pieces (Frost Smash type-dead); they must never receive energy and never be left active", "metric": "energy_attach_share[103,104]", "expect": "energy_attach_share[103]==0 and [104]==0; active_rate[103,104] ~0", "violation_symptom": "エネが意図しないポケモンへ", "pattern": "ベンチ許可リスト＋上限"},
+    {"id": "H5", "claim": "The scale components (Shadow Bullet bench-30, Adrena-Brain 30x#Munkidori, Freezing Shroud 10) should be promoted to shared perception and concentrated on ONE finish-off bench target rather than spread randomly", "metric": "gust_targets / damage_placement_concentration", "expect": "bench-30 and Adrena-Brain land on same target on >50% of turns where a bench KO is reachable", "violation_symptom": "スケール技が過小評価される", "pattern": "実打点式を共有知覚に昇格"},
+    {"id": "H6", "claim": "Lillie's Determination shuffles hand into deck; playing it while holding combo pieces (648/RareCandy/needed energy) throws away the win. It should be gated on hand NOT containing key pieces", "metric": "play_rate[1227] conditioned on hand contents", "expect": "Lillie's rarely played on a turn where 648 or 1079 is in hand and usable", "violation_symptom": "キーカードがトラッシュ/山で勝ち筋喪失", "pattern": "回収/ドローカードの所持ベース発火"},
+    {"id": "H7", "claim": "Boss's Orders should gust a Pokemon KOable by Shadow Bullet 180 or a high-value engine piece, not be wasted early; generic 'gust on 60+ damage' under-values the 180 line and the 2-prize math", "metric": "gust_targets, play_rate[1182]", "expect": "Boss targets are KO'd same turn or are prize-dense; play_rate[1182] weighted to mid/late", "violation_symptom": "gust が価値を逃す", "pattern": "サイド期待値・実打点ベースの対象選択"},
+    {"id": "H8", "claim": "Retreat is expensive on the tank (Grimmsnarl cost 2) and cheap on support (cost 1). Retreat should serve promoting Impidimp/demoting a stuck support mon, NOT ping-ponging the loaded Grimmsnarl", "metric": "retreat_count", "expect": "retreat_count low; Grimmsnarl(648) retreat_share ~0; no generic retreat ping-pong", "violation_symptom": "攻撃せず抱え込み/遅延", "pattern": "攻撃優先の均衡則"},
+    {"id": "H9", "claim": "Spikemuth Gym search is one-sided (opponent has no Marnie's Pokemon); it should be kept in play and its Marnie's search used every turn for consistency", "metric": "trigger_fire[spikemuth_search]", "expect": "trigger_fire[spikemuth_search] fires on most turns while stadium is ours", "violation_symptom": "キーカードのプレイ率~0", "pattern": "発火条件を所持状態ベースに"},
+    {"id": "H10", "claim": "Once Grimmsnarl is online the deck must attack every turn (Shadow Bullet); passivity is harmful and there is no reason to hold", "metric": "nonattacking_turn_rate", "expect": "nonattacking_turn_rate ~0 after 648 online", "violation_symptom": "攻撃せず抱え込み/遅延", "pattern": "攻撃優先の均衡則"},
+    {"id": "H11", "claim": "If Grimmsnarl is delayed, Morgrem Corkscrew Punch (60, [D][D]) should be used as a bridge attacker instead of not attacking", "metric": "first_attack_turn, play_rate[647]", "expect": "first_attack_turn median <= 3; some games show 647 attacking before 648 online", "violation_symptom": "攻撃せず抱え込み/遅延", "pattern": "攻撃優先の均衡則"},
+    {"id": "H12", "claim": "Bench composition should be capped (Impidimp x2, Munkidori x1-2, Snorunt/Froslass x1); over-benching Munkidori/Grimmsnarl increases Froslass self-chip surface and gives Boss more high-value targets", "metric": "bench_size_dist, loss_share[board]", "expect": "bench not indiscriminately maxed; loss_share[board] not dominant", "violation_symptom": "無差別ベンチ展開", "pattern": "ベンチ許可リスト＋上限"}
+  ],
+  "card_intents": {
+    "646": {"name": "Marnie's Impidimp", "trigger": "own_active empty OR evolution base needed", "expected_play_rate": 1.0},
+    "647": {"name": "Marnie's Morgrem", "trigger": "Rare Candy absent AND Impidimp in play; also bridge attacker if 648 delayed", "expected_play_rate": 0.5},
+    "648": {"name": "Marnie's Grimmsnarl ex", "trigger": "Impidimp/Morgrem in play AND (Rare Candy in hand OR Morgrem in play)", "expected_play_rate": 1.0},
+    "112": {"name": "Munkidori", "trigger": "has >=1 Darkness energy attached AND own board has damage counters to relocate", "expected_play_rate": 0.7},
+    "103": {"name": "Snorunt", "trigger": "as Froslass evolution base only; never energize/active", "expected_play_rate": 0.6},
+    "104": {"name": "Froslass", "trigger": "in play (Freezing Shroud auto-fires each checkup); value gated on Munkidori being online", "expected_play_rate": 0.6},
+    "7": {"name": "Basic Darkness Energy", "trigger": "hand-attach: Munkidori(1) then active Grimmsnarl(2) then 2nd Marnie's line", "expected_play_rate": 1.0},
+    "1259": {"name": "Spikemuth Gym", "trigger": "each turn (one-sided Marnie's search); keep in play", "expected_play_rate": 1.0},
+    "1152": {"name": "Poke Pad", "trigger": "non-ex Pokemon (Impidimp/Munkidori/Snorunt/Morgrem) needed", "expected_play_rate": 0.7},
+    "1219": {"name": "Team Rocket's Petrel", "trigger": "specific Trainer needed AND supporter slot free", "expected_play_rate": 0.6},
+    "1227": {"name": "Lillie's Determination", "trigger": "hand small AND does NOT contain unusable key combo pieces (648/1079/needed energy)", "expected_play_rate": 0.6},
+    "1079": {"name": "Rare Candy", "trigger": "existing Impidimp in play AND 648 in hand AND not first turn", "expected_play_rate": 0.9},
+    "1086": {"name": "Buddy-Buddy Poffin", "trigger": "early, bench thin (fetches Impidimp/Snorunt only, not Munkidori)", "expected_play_rate": 0.7},
+    "1231": {"name": "Dawn", "trigger": "Grimmsnarl evolution line pieces missing", "expected_play_rate": 0.6},
+    "1097": {"name": "Night Stretcher", "trigger": "648 or Darkness energy in discard AND rebuild needed", "expected_play_rate": 0.5},
+    "1182": {"name": "Boss's Orders", "trigger": "target KOable by 180 OR fragile engine piece (Munkidori/Froslass) on opp bench; mid/late", "expected_play_rate": 0.5},
+    "1197": {"name": "Xerosic's Machinations", "trigger": "opponent hand >=4 AND closing turns", "expected_play_rate": 0.2},
+    "1161": {"name": "Handheld Fan", "trigger": "attach to active 648 vs opponent that energy-accelerates a big attacker", "expected_play_rate": 0.2},
+    "1080": {"name": "Unfair Stamp", "trigger": "own Pokemon was KO'd during opponent's last turn", "expected_play_rate": 0.25}
+  },
+  "axes": {
+    "speed": 3,
+    "power_curve": 4,
+    "consistency": 3,
+    "sustain": 4,
+    "adaptability": 3,
+    "resource_economy": 3,
+    "disruption_resistance": 3,
+    "prize_race": 4,
+    "spread_engine_uptime": 2,
+    "punk_up_distribution_quality": 2
+  }
+}

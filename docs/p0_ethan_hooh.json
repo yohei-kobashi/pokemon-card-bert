@@ -1,0 +1,470 @@
+{
+ "deck": "ethan_hooh",
+ "expected_dmg": [
+  {
+   "pokemon": 356,
+   "attack": "Lava Burst",
+   "formula": "70 * min(5, R_energy_discarded_from_self); display 0; x2 vs Fire-weak (max 350 base, 700 weak)",
+   "verified": true
+  },
+  {
+   "pokemon": 140,
+   "attack": "Cruel Arrow",
+   "formula": "100 to any 1 opponent Pokemon (no bench weakness); display 0",
+   "verified": true
+  },
+  {
+   "pokemon": 338,
+   "attack": "Rallying Horn",
+   "formula": "70 + (100 if any of your Ethan's Pokemon was KO'd by an attack last turn) = 70 or 170; display 70",
+   "verified": false
+  },
+  {
+   "pokemon": 357,
+   "attack": "Shining Feathers",
+   "formula": "160 damage; rider heal 50 * (#your Pokemon); display 160",
+   "verified": true
+  },
+  {
+   "pokemon": 184,
+   "attack": "Eon Blade",
+   "formula": "TYPE-DEAD: costs PPC, deck has no Psychic; never usable (verified never offered)",
+   "verified": true
+  },
+  {
+   "pokemon": 338,
+   "attack": "Vise Grip",
+   "formula": "TYPE-DEAD: costs G, deck has no Grass; never usable (verified never offered)",
+   "verified": true
+  }
+ ],
+ "phases": {
+  "early": {
+   "until": "356 in play AND (bench_R[356] >= 1 OR bench_R[355] >= 1)",
+   "on_plan": "first_attack_turn <= 4; Ho-Oh active + Slugma/Magcargo benched; attacking with Shining Feathers or Steady Firebreathing"
+  },
+  "mid": {
+   "until": "bench_R[356] reaches 5 AND deckCount > 15",
+   "on_plan": "Shining Feathers 160+heal every turn; energy_attach_share[356] rising; nonattacking_turn_rate low; not yet firing Lava"
+  },
+  "late": {
+   "until": "opp_prizes <= 3 OR KO target with eff_HP <= 70*R_on_Magcargo present",
+   "on_plan": "promote loaded Magcargo -> Lava Burst KO -> Melt-Away retreat; post_ko_attack_rate high; deckCount > 6"
+  }
+ },
+ "doctrines": [
+  {
+   "name": "A: Ho-Oh sustain + Magcargo finisher",
+   "plan": "Ho-Oh active attacks Shining Feathers 160+heal every turn; Golden Flame banks 2R/turn onto one benched Magcargo; promote Magcargo only to KO a >=210HP ex or for lethal, then Melt-Away retreat back to Ho-Oh",
+   "discriminating_metric": "A/B on energy_attach_share[357] vs [356] and post_ko_attack_rate: A keeps Ho-Oh armed (Shining play_rate high, Lava periodic); B pushes energy_attach_share[356] high"
+  },
+  {
+   "name": "B: Magcargo primary beatdown",
+   "plan": "Rush loaded Magcargo active, Lava Burst repeatedly; Ho-Oh is bench-only Golden Flame battery",
+   "discriminating_metric": "compare win_rate and loss_share[deckout] between A and B; B expected to raise deckout (heavier dig to reload 5R each shot) and lower post_ko_attack_rate"
+  }
+ ],
+ "tensions": [
+  {
+   "axes": [
+    "dig/consistency",
+    "deckout/resource_economy"
+   ],
+   "balance": "search/draw only while deckCount > D (D in {8,10,12,15}) AND a required piece is missing; when calibrating loss_share[deckout] also watch combo-assembly whiff to avoid bricking"
+  },
+  {
+   "axes": [
+    "energy_banking",
+    "attacking_now"
+   ],
+   "balance": "bank R to exactly 5 on ONE designated benched Magcargo then stop and attack; monitor energy_attach_share[356] against nonattacking_turn_rate"
+  },
+  {
+   "axes": [
+    "magcargo_nuke",
+    "prize_resource_economy"
+   ],
+   "balance": "fire Lava Burst only when target_eff_HP <= 70*R_on_Magcargo (secures a KO); a wasted 5-R shot is catastrophic tempo"
+  }
+ ],
+ "hypotheses": [
+  {
+   "id": "H1",
+   "severity": "catastrophic",
+   "claim": "L0 routes energy (Golden Flame target + manual attach) to Ho-Oh (display 160) or tries type-dead Latias (display 200), starving benched Magcargo (Lava display 0), so Magcargo rarely reaches 5R and the 350 payoff never comes online",
+   "metric": "energy_attach_share[356]",
+   "direction": "energy_attach_share[356] must be substantial (Magcargo receives a real share of R) and play_rate[356 Lava Burst] > 0 in games where Magcargo is in play",
+   "threshold": {
+    "value": "energy_attach_share[356] >= 0.30 in games with Magcargo in play",
+    "provisional": true,
+    "params": {
+     "min_share": [
+      "0.2",
+      "0.3",
+      "0.4"
+     ],
+     "bank_cap": [
+      "5"
+     ]
+    }
+   },
+   "risk_of_overtightening": "forcing all R to Magcargo starves Ho-Oh Shining Feathers (the sustainable per-turn attacker + heal) -> fewer attacks and total loss if the glass Magcargo dies before firing",
+   "scenario": "Bench a Magcargo and a Ho-Oh; give hand several R. L0 attaches to Ho-Oh every turn (higher display); Magcargo stuck at 0-2 R; opponent tanks 160/turn while the 350 KO never lands.",
+   "violation_symptom": "payoff never online / scale attack undervalued",
+   "pattern": "promote real-damage formula to shared perception + deck-specific feeding plan (designate bench-Magcargo, cap 5)"
+  },
+  {
+   "id": "H2",
+   "severity": "catastrophic",
+   "claim": "Unconditional draw/search (Lillie's Determination draw 6/8, Ultra Ball x4, Ethan's Adventure, Cyrano, Poke Pad, Pokegear, Fezandipiti draw 3) mills the deck to 0 and loses on the draw step; deck has no deck-refill, only Night Stretcher recycling to hand",
+   "metric": "loss_share[deckout]",
+   "direction": "loss_share[deckout] must decrease well below the naive baseline",
+   "threshold": {
+    "value": "loss_share[deckout] <= 0.15 (naive-pilot baseline measured ~0.48)",
+    "provisional": true,
+    "params": {
+     "stop_dig_deck_threshold_D": [
+      "8",
+      "10",
+      "12",
+      "15"
+     ]
+    }
+   },
+   "risk_of_overtightening": "throttling dig too early starves combo assembly (can't find Magcargo line or R) -> brick/whiff; must gate on 'piece missing' not deck count alone",
+   "scenario": "Deck <= 12, hand already holds Ho-Oh + Magcargo + R; L0 still fires Lillie's Determination (draw 6) and two Ultra Balls -> deck to 0 -> lose at next turn's draw.",
+   "violation_symptom": "deckout loss",
+   "pattern": "stop-digging gate at low deckCount (the stop side, not just recycle) + hold-combo gate on Lillie's"
+  },
+  {
+   "id": "H3",
+   "severity": "major",
+   "claim": "Post-KO attack rate is low: Lava Burst self-discards all energy (0 after firing) and L0 promotes the highest-display Pokemon (Ho-Oh/benched Ho-Oh) rather than a pre-loaded attacker, so the turn after a KO often has no armed attacker",
+   "metric": "post_ko_attack_rate",
+   "direction": "post_ko_attack_rate must rise",
+   "threshold": {
+    "value": "post_ko_attack_rate >= 0.6",
+    "provisional": true,
+    "params": {
+     "reserve_bank_cap": [
+      "5"
+     ],
+     "chain_depth": [
+      "1",
+      "2"
+     ]
+    }
+   },
+   "risk_of_overtightening": "pre-banking a 2nd Magcargo over-invests R and delays current damage / accelerates dig -> deckout",
+   "violation_symptom": "main attacker KO'd then can't attack",
+   "pattern": "2nd Magcargo pre-bank chain (cap 5) + type-aware promotion to a loaded attacker"
+  },
+  {
+   "id": "H4",
+   "severity": "major",
+   "claim": "Gust (Boss's Orders / Prime Catcher) is mis-gated: when Magcargo (display 0) is active it can do 350 but L0's 'gust only if active display >= 60' suppresses it; conversely gust may fire on wrong target because it can't read Lava/Cruel-Arrow real damage",
+   "metric": "gust_targets",
+   "direction": "gust used on turns a real-damage KO/lethal exists (reads 70*R for Magcargo, 100 for Cruel Arrow)",
+   "threshold": {
+    "value": "gust converts to a KO on >= 0.7 of gust turns",
+    "provisional": true,
+    "params": {
+     "gust_real_dmg_min": [
+      "100",
+      "150"
+     ]
+    }
+   },
+   "risk_of_overtightening": "over-gusting burns the Supporter slot (Boss competes with draw supporters) and Prime Catcher (1 copy)",
+   "violation_symptom": "gust misses value",
+   "pattern": "gust on real-damage + prize expected value"
+  },
+  {
+   "id": "H5",
+   "severity": "major",
+   "claim": "Energy over-banking: L0 may pile more than 5 R on Magcargo or spread R across multiple Pokemon, wasting energy and delaying damage while nonattacking_turn_rate rises",
+   "metric": "nonattacking_turn_rate",
+   "direction": "nonattacking_turn_rate must stay low; energy concentrated to cap 5 on one Magcargo",
+   "threshold": {
+    "value": "nonattacking_turn_rate <= 0.2",
+    "provisional": true,
+    "params": {
+     "bank_cap": [
+      "5"
+     ],
+     "spread_penalty": [
+      "on"
+     ]
+    }
+   },
+   "risk_of_overtightening": "capping below 5 lowers the Lava ceiling under KO thresholds (e.g. 4R=280 fails to KO a 330 ex)",
+   "violation_symptom": "attacking-passively / hoarding",
+   "pattern": "attack-priority equilibrium + cap-5 feeding"
+  },
+  {
+   "id": "H6",
+   "severity": "major",
+   "claim": "Ultra Ball (discard 2) and Lillie's Determination (shuffle hand) discard/return combo pieces: Ultra Ball can pitch the last R or a Magcargo/Ho-Oh; Lillie's can shuffle away an assembled hand",
+   "metric": "play_rate[1121]",
+   "direction": "Ultra Ball fired only with >=2 spare non-key cards; Lillie's not fired while holding assembled line",
+   "threshold": {
+    "value": "key-piece discard events per game <= 0.3",
+    "provisional": true,
+    "params": {
+     "spare_cards_required": [
+      "2",
+      "3"
+     ]
+    }
+   },
+   "risk_of_overtightening": "refusing Ultra Ball stalls tutoring the Magcargo line",
+   "violation_symptom": "key card to trash/deck -> win condition lost",
+   "pattern": "state-gated discard selection (protect R + combo Pokemon) + hold-combo gate"
+  },
+  {
+   "id": "H7",
+   "severity": "minor",
+   "claim": "Buddy-Buddy Poffin x4 is a dead card: no Basic Pokemon in the deck has <=70 HP (Slugma is 80), so it whiffs 100% of plays (verified 280 plays, 0 targets); L0 wastes an item action playing it",
+   "metric": "play_rate[1086]",
+   "direction": "Poffin provides zero search value; ideally play_rate[1086] ~ 0 (do not waste the action)",
+   "threshold": {
+    "value": "value_events[1086] == 0 (always)",
+    "provisional": true,
+    "params": {
+     "suppress_poffin": [
+      "true",
+      "false"
+     ]
+    }
+   },
+   "risk_of_overtightening": "none — it is strictly dead; not L2-fixable beyond not playing it (does not even thin deck)",
+   "violation_symptom": "dead slot / brick",
+   "pattern": "suppress no-legal-target item play"
+  },
+  {
+   "id": "H8",
+   "severity": "major",
+   "claim": "Passivity: L0 may spend turns banking energy / digging without attacking even though Ho-Oh can Shining Feathers 160+heal nearly every turn once armed",
+   "metric": "nonattacking_turn_rate",
+   "direction": "first_attack_turn early and nonattacking_turn_rate low",
+   "threshold": {
+    "value": "first_attack_turn <= 4 and nonattacking_turn_rate <= 0.2",
+    "provisional": true,
+    "params": {
+     "attack_priority": [
+      "on"
+     ]
+    }
+   },
+   "risk_of_overtightening": "forcing an attack with an unloaded Ho-Oh (needs RRRR) wastes tempo; gate on 'armed attacker exists'",
+   "violation_symptom": "attacking-passively / delay",
+   "pattern": "attack-priority equilibrium (passivity is consistently harmful)"
+  },
+  {
+   "id": "H9",
+   "severity": "major",
+   "claim": "To promote a loaded benched Magcargo, active Ho-Oh must retreat (cost 2); L0's 'do not retreat a loaded Pokemon (energy-count based)' can refuse to retreat armed Ho-Oh, stalling the Lava line (Prime Catcher self-switch is the only 1-copy bypass)",
+   "metric": "retreat_count",
+   "direction": "retreat/Prime-Catcher pivot enabled on the Lava KO turn -> play_rate[356 Lava] > 0",
+   "threshold": {
+    "value": "on turns bench_R[356]>=5 and a KO exists, a pivot (retreat or Prime Catcher) occurs >= 0.7 of the time",
+    "provisional": true,
+    "params": {
+     "allow_loaded_retreat_for_payoff": [
+      "true"
+     ]
+    }
+   },
+   "risk_of_overtightening": "retreating armed Ho-Oh loses its next Shining Feathers turn; only pivot when Lava secures a KO",
+   "violation_symptom": "type-death wall / loaded-attacker not promoted",
+   "pattern": "type-aware & payoff-aware retreat gating"
+  },
+  {
+   "id": "H10",
+   "severity": "minor",
+   "claim": "Type-dead attackers treated as valid: L0 may attach R to Latias (Eon Blade display 200, needs Psychic) or Pinsir for Vise Grip (needs Grass), permanently wasting energy on Pokemon that can never fire those attacks",
+   "metric": "energy_attach_share[184]",
+   "direction": "energy_attach_share[184] ~ 0 (never load Latias); Pinsir loaded only for Rallying Horn CCC",
+   "threshold": {
+    "value": "energy_attach_share[184] <= 0.02",
+    "provisional": true,
+    "params": {
+     "exclude_type_dead": [
+      "true"
+     ]
+    }
+   },
+   "risk_of_overtightening": "none — Latias never wants energy; ensure Pinsir can still receive colorless-payable R for Rallying Horn",
+   "violation_symptom": "type-dead loaded as attacker",
+   "pattern": "type-aware loading (distinguish 'wall' from 'charging')"
+  }
+ ],
+ "card_intents": {
+  "357": {
+   "name": "Ethan's Ho-Oh ex",
+   "trigger": "active from T1; Golden Flame each turn if R_in_hand>=1 and a benched Ethan's Pokemon exists; Shining Feathers if RRRR attached",
+   "expected_play_rate": 0.95
+  },
+  "2": {
+   "name": "Basic {R} Energy",
+   "trigger": "attach to Ho-Oh (attack) or via Golden Flame to bench-Magcargo (cap 5); never to Latias",
+   "expected_play_rate": 0.9
+  },
+  "355": {
+   "name": "Ethan's Slugma",
+   "trigger": "bench early, evolve to Magcargo ASAP; Steady Firebreathing only if sole Fire attacker",
+   "expected_play_rate": 0.8
+  },
+  "356": {
+   "name": "Ethan's Magcargo",
+   "trigger": "evolve on bench, bank to 5 R, promote+Lava Burst if target_eff_HP <= 70*R",
+   "expected_play_rate": 0.7
+  },
+  "338": {
+   "name": "Ethan's Pinsir",
+   "trigger": "promote after a KO; Rallying Horn (CCC) for 170 if Ethan's KO'd last turn; Vise Grip never (type-dead)",
+   "expected_play_rate": 0.15
+  },
+  "140": {
+   "name": "Fezandipiti ex",
+   "trigger": "bench; Flip the Script if own Pokemon KO'd last turn and deckCount>4; Cruel Arrow (CCC) to snipe 100",
+   "expected_play_rate": 0.4
+  },
+  "184": {
+   "name": "Latias ex",
+   "trigger": "bench for Skyliner (free retreat) only; never attack, never load energy",
+   "expected_play_rate": 0.3
+  },
+  "1227": {
+   "name": "Lillie's Determination",
+   "trigger": "hand_size <= H (3-5) and deckCount > D (8-12) and not holding assembled line",
+   "expected_play_rate": 0.6
+  },
+  "1121": {
+   "name": "Ultra Ball",
+   "trigger": "need a Pokemon and hand has >=2 spare non-{R} non-combo cards to discard",
+   "expected_play_rate": 0.6
+  },
+  "1086": {
+   "name": "Buddy-Buddy Poffin",
+   "trigger": "DEAD - no <=70 HP basic exists (verified 0 targets); ideally do not play",
+   "expected_play_rate": 0.0
+  },
+  "1215": {
+   "name": "Ethan's Adventure",
+   "trigger": "need Ethan's Pokemon or R and deckCount > D",
+   "expected_play_rate": 0.5
+  },
+  "1198": {
+   "name": "Crispin",
+   "trigger": "want an extra attach (only pulls {R} in this deck; different-type clause inert)",
+   "expected_play_rate": 0.4
+  },
+  "1182": {
+   "name": "Boss's Orders",
+   "trigger": "can KO/lethal a benched threat this turn by real damage",
+   "expected_play_rate": 0.5
+  },
+  "1152": {
+   "name": "Poke Pad",
+   "trigger": "need the Slugma/Magcargo/Pinsir line and deckCount > D",
+   "expected_play_rate": 0.5
+  },
+  "1097": {
+   "name": "Night Stretcher",
+   "trigger": "key piece (Magcargo/Ho-Oh/R) in discard and needed; anti-deckout, does not mill",
+   "expected_play_rate": 0.5
+  },
+  "1122": {
+   "name": "Pokegear 3.0",
+   "trigger": "no Supporter in hand",
+   "expected_play_rate": 0.5
+  },
+  "1256": {
+   "name": "Team Rocket's Watchtower",
+   "trigger": "opp relies on Colorless-ability Pokemon or to overwrite opp stadium; no self-harm (we have no Colorless)",
+   "expected_play_rate": 0.3
+  },
+  "1205": {
+   "name": "Cyrano",
+   "trigger": "need Ho-Oh (or ex) and hand lacks it, early",
+   "expected_play_rate": 0.25
+  },
+  "1088": {
+   "name": "Prime Catcher",
+   "trigger": "lethal gust OR bring loaded Magcargo active without retreat (ACE, 1 copy - save for Lava KO)",
+   "expected_play_rate": 0.3
+  }
+ },
+ "axes": {
+  "speed": 3,
+  "power_curve": 4,
+  "consistency": 2,
+  "sustain": 4,
+  "answers": 3,
+  "resource_economy": 1,
+  "disruption_resistance": 2,
+  "prize_race": 2
+ },
+ "disposition_ledger": {
+  "H1": null,
+  "H2": null,
+  "H3": null,
+  "H4": null,
+  "H5": null,
+  "H6": null,
+  "H7": null,
+  "H8": null,
+  "H9": null,
+  "H10": null
+ },
+ "lines": [
+  {
+   "name": "grind_bank_lava",
+   "verified_by": "P0.5 probes: Golden Flame opens ATTACH_TO (targets were scattered -> routed); Skyliner free retreat for basics observed (retreat_FREE id357 e2 x2); Melt Away rc0 (DB); Lava 70xR<=350 (P0 probe)",
+   "setup": "T<=4: Ho-Oh active grinding toward 4R; bench Magcargo line + Latias (Skyliner); Golden Flame 2R/turn to the bank",
+   "loop": "Shining Feathers 160+heal each turn; bank R on benched Magcargo (cap 5); when a KO needs >160, pivot Magcargo in (free via Skyliner/Switch), Lava Burst, self-empty -> Melt Away free retreat back",
+   "finisher": "Lava 350 on-demand KOs; Boss for bench targets",
+   "invariants": [
+    {
+     "id": "bank_armed",
+     "type": "armed_bodies",
+     "cid": 356,
+     "energy": 2,
+     "min_energy": 3,
+     "count": 1,
+     "by_turn": 8
+    },
+    {
+     "id": "grinder_armed",
+     "type": "armed_bodies",
+     "cid": 357,
+     "energy": 2,
+     "min_energy": 4,
+     "count": 1,
+     "by_turn": 8
+    },
+    {
+     "id": "attacks_flow",
+     "type": "attack_rate_after",
+     "turn": 6,
+     "min": 0.8
+    }
+   ],
+   "combo_edges": [
+    {
+     "edge": "Golden Flame bank on display-0 Magcargo -> Lava 350",
+     "individually_negative": true
+    },
+    {
+     "edge": "Latias bench slot (no attack) -> free basic rotation",
+     "individually_negative": true
+    },
+    {
+     "edge": "Lava discard-all -> Melt Away free retreat",
+     "individually_negative": true
+    }
+   ]
+  }
+ ]
+}

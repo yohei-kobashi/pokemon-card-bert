@@ -1,0 +1,139 @@
+{
+  "deck": "archaludon",
+  "expected_dmg": [
+    {"pokemon": 190, "attack": "Metal Defender", "formula": "220 * (2 if defender weak Metal) - 30*[defender is Metal AND a Full Metal Lab is in play] - other_reductions ; flat, no scaling; also removes own Weakness during opponent's next turn", "verified": true},
+    {"pokemon": 666, "attack": "Turbo Flare", "formula": "damage = 50 * (2 if defender weak Fire); TRUE payload = attach min(3, basic_M_in_deck) Basic {M} Energy from deck to your Bench (energy engine, not the 50)", "verified": true},
+    {"pokemon": 190, "attack": "Raging Hammer (via Relicanth Memory Dive)", "formula": "80 + 10 * (damage_counters_on_this_Archaludon) ; exceeds Metal Defender only at >=14 self counters (near-death). Availability via Memory Dive verified; +10/counter scaling NOT probe-verified", "verified": false},
+    {"pokemon": 169, "attack": "Hammer In", "formula": "30 flat * weakness - reductions", "verified": true}
+  ],
+  "phases": {
+    "early": {"until": "turn <= 2 OR bench_Archaludon_metal < 3", "on_plan": "Cinderace active if in opener (Explosiveness); >=1 Duraludon + Relicanth benched; Turbo Flare used >=1; manual energy attach prioritizes the accelerator (Cinderace's 1 energy) over displayed-max Archaludon"},
+    "mid": {"until": "any Archaludon (bench or active) has metal >= 3", "on_plan": "retreat Cinderace (retreat0, free) and PROMOTE Archaludon; first Metal Defender by turn 3 (accel) / turn 4 (planB); Full Metal Lab down; Hero's Cape on Archaludon"},
+    "late": {"until": "first Metal Defender has landed", "on_plan": "Metal Defender every turn (>=1 KO per 2 turns), heal with Jumbo Ice Cream, keep wall; STOP non-essential digging when deckCount <= D; never promote Relicanth or unloaded Duraludon"}
+  },
+  "doctrines": [
+    {"name": "accel-milk", "plan": "keep Cinderace active firing Turbo Flare until >=2 benched Metal targets reach 3 energy, then transition permanently to Archaludon", "discriminating_metric": "A/B on first_attack_turn vs loss_share[prize]: milking lowers first_attack_turn variance & builds a 2nd loaded Archaludon but delays first Metal Defender and exposes Cinderace (1 prize, no lab protection)"},
+    {"name": "fast-transition", "plan": "promote Archaludon the moment ONE bench Archaludon hits 3 metal; minimize Cinderace's board exposure", "discriminating_metric": "A/B on first_attack_turn (earlier) vs post_ko_attack_rate (worse redundancy); compare energy_attach_share[190] concentration"}
+  ],
+  "tensions": [
+    {"axes": ["acceleration", "power_output"], "balance": "fire Turbo Flare while bench_Archaludon_metal < 3; on the first turn a bench Archaludon reaches metal>=3, retreat Cinderace and promote Archaludon permanently"},
+    {"axes": ["dig_consistency", "deckout"], "balance": "allow non-essential digging (Explorer's Guidance / Ultra Ball / Pokegear) only while deckCount > D, D in {10,12,15,18}"},
+    {"axes": ["wall_durability", "clock"], "balance": "once online, keep nonattacking_turn_rate below cap (Metal Defender at least once per 2 turns); do not over-stall a self-milling deck into deckout"}
+  ],
+  "hypotheses": [
+    {"id": "H1", "severity": "catastrophic",
+     "claim": "L0 uses Explorer's Guidance (mills 4/use), Ultra Ball (discards 2), Pokegear and Poke Pad unconditionally every turn; in this 300HP-wall deck games run long and it decks itself out.",
+     "metric": "loss_share[deckout]",
+     "direction": "loss_share[deckout] must be low; deckCount at game end must stay > 0 in wins",
+     "threshold": {"value": "loss_share[deckout] <= 0.15", "provisional": true, "params": {"D_stop_dig": ["10", "12", "15", "18"]}},
+     "risk_of_overtightening": "gating digs too early starves the assembly of the Duraludon->Archaludon line and metal, raising brick rate / first_attack_turn",
+     "scenario": "Mirror or slow control matchup. Archaludon walls behind Full Metal Lab + Jumbo Ice Cream; L0 fires Explorer's Guidance + Ultra Ball + Pokegear each turn; by ~turn 16 deckCount hits 0 and L0 loses on the empty-deck rule before taking the 6th prize.",
+     "violation_symptom": "deckout_loss", "pattern": "yamagire: promote deck-return conditions + stop digging when deck is thin"},
+
+    {"id": "H2", "severity": "catastrophic",
+     "claim": "When Cinderace is in the opening hand alongside a real Basic (Duraludon/Relicanth), L0's setup-active pick chooses the real Basic; because Cinderace is a Stage2 with no Raboot in the deck it can NEVER be played from hand later (probe-verified), so the deck's only energy accelerator is lost for the entire game.",
+     "metric": "play_rate[666]",
+     "direction": "conditional on Cinderace in opening hand, it should be placed in the Active Spot at setup ~100% of the time; energy_attach_share[666] > 0 early",
+     "threshold": {"value": "given-Cinderace-in-opener setup_active(Cinderace) rate >= 0.9", "provisional": true, "params": {"prefer_explosiveness": ["always", "unless_only_1_basic_line"]}},
+     "risk_of_overtightening": "forcing Cinderace active even when it will be immediately KO'd (Fire, no Full Metal Lab protection, 1 free prize) can occasionally be worse than a Duraludon open; keep it conditional on a benchable Duraludon line existing",
+     "scenario": "Opening hand = Cinderace + Duraludon + energy. L0 opens Duraludon active and benches, holding Cinderace. Cinderace is now a permanent dead card; no Turbo Flare ever fires; Metal Defender online slips to turn 4-5 and the deck plays with no acceleration all game.",
+     "violation_symptom": "accelerator_permanently_dead", "pattern": "setup-active must preserve one-shot post-setup-unplayable enablers"},
+
+    {"id": "H3", "severity": "major",
+     "claim": "With Cinderace active and able to Turbo Flare (50 + accel), L0 keeps attacking with the current active and never retreats (retreat0=free) to promote a loaded Archaludon, so the deck outputs 50/turn instead of 220/turn. Observed: a greedy build never transitioned without explicit retreat code.",
+     "metric": "post_ko_attack_rate",
+     "direction": "once a bench Archaludon has metal>=3, the active should become Archaludon within 1 turn; Metal Defender use-rate should dominate Turbo Flare after mid phase",
+     "threshold": {"value": "share of post-setup attacks that are Metal Defender >= 0.6 by turn 5", "provisional": true, "params": {"promote_when_bench_metal": ["3", "4"]}},
+     "risk_of_overtightening": "promoting too eagerly before enough bench targets are loaded reduces the number of pre-loaded Archaludon (worse chain/redundancy)",
+     "violation_symptom": "underpowered_active_no_transition", "pattern": "attack-priority equilibrium: promote the real finisher; scale-attack accel must yield once its job is done"},
+
+    {"id": "H4", "severity": "major",
+     "claim": "L0 attaches the manual energy to the displayed-max attacker (Archaludon 220 on bench) instead of the active Cinderace's single energy needed to fire Turbo Flare (which then floods 3 energy from deck), starving acceleration in the opening turns.",
+     "metric": "energy_attach_share[666]",
+     "direction": "on a turn where Cinderace is active with 0 energy and a Turbo Flare would fire, the manual attach should go to Cinderace",
+     "threshold": {"value": "energy_attach_share[666] >= 1 attach within first 2 own-turns when Cinderace opens", "provisional": true, "params": {"accel_first_attach": ["true", "false"]}},
+     "risk_of_overtightening": "over-feeding Cinderace beyond the 1 energy it needs wastes attaches that Archaludon needs to reach 3 metal",
+     "violation_symptom": "energy_to_wrong_pokemon", "pattern": "deck-specific feeding plan: first attach enables the accelerator, rest go to the finisher"},
+
+    {"id": "H5", "severity": "minor",
+     "claim": "Boss's Orders gust is gated on active displayed damage >= 60; when Cinderace is active (displayed 50) L0 will not gust even when the real plan (promote Archaludon for a 220 KO) makes a gust lethal; conversely it may spend Boss's Orders with no valuable target.",
+     "metric": "gust_targets",
+     "direction": "Boss's Orders should fire only when a benched target is KO-able by the intended Metal Defender and is worth pulling (prize value / role)",
+     "threshold": {"value": "wasted-gust rate <= 0.2", "provisional": true, "params": {"min_effective_dmg_for_gust": ["120", "150", "200"]}},
+     "risk_of_overtightening": "too strict a target filter leaves the 2 copies unused when a tempo gust would have won the prize race",
+     "violation_symptom": "gust_wasted_or_missed", "pattern": "gust by prize-value and REAL damage, not displayed damage of current active"},
+
+    {"id": "H6", "severity": "major",
+     "claim": "On KO of the active Archaludon, L0 promotes by highest displayed damage and can promote type-dead Relicanth (Razor Fin needs Fighting, deck has none -> can never attack) or an unloaded Duraludon, stranding the board.",
+     "metric": "post_ko_attack_rate",
+     "direction": "post-KO promotion must choose a loaded Metal attacker (Archaludon with metal>=3, else a Duraludon that can Hammer In); never Relicanth",
+     "threshold": {"value": "post_ko_attack_rate >= 0.8", "provisional": true, "params": {"promote_requires_metal": ["1", "3"]}},
+     "risk_of_overtightening": "requiring metal>=3 to promote can leave you with no legal promote and force Relicanth anyway; fall back to any Metal Pokemon before Relicanth",
+     "violation_symptom": "promote_type_dead_or_unloaded", "pattern": "type-aware loaded-attacker promotion (distinguish wall/type-death from loaded by TYPE not count)"},
+
+    {"id": "H7", "severity": "minor",
+     "claim": "Lillie's Determination fires only at hand <= 5 (L0 draw-supporter gate); this deck accumulates dead Cinderace copies and situational trainers, so a fat (>5) hand of junk never gets recycled, and conversely a fat hand of live cards gets needlessly shuffled away.",
+     "metric": "play_rate[1227]",
+     "direction": "Lillie should fire when the hand holds >=2 dead/useless cards (esp. surplus Cinderace) OR hand is starved, not on a raw size threshold",
+     "threshold": {"value": "play_rate[1227] in [0.3, 0.6]; dead-card-in-hand turns should trend down after firing", "provisional": true, "params": {"dead_cards_to_fire": ["2", "3"], "hand_size_gate": ["5", "6", "7"]}},
+     "risk_of_overtightening": "firing Lillie too often reshuffles metal/pieces you wanted to hold and thins the deck faster (feeds H1)",
+     "violation_symptom": "key_supporter_misfire", "pattern": "fire condition on held-state (dead-card count) not generic hand-size threshold"},
+
+    {"id": "H8", "severity": "minor",
+     "claim": "Jumbo Ice Cream (heal 80, requires active with 3+ energy = Archaludon) is undervalued by L0, so Archaludon dies a turn earlier than needed, degrading the 2-prize wall trade.",
+     "metric": "play_rate[1147]",
+     "direction": "Jumbo Ice Cream should fire when healing 80 keeps Archaludon above the opponent's next-hit lethal threshold",
+     "threshold": {"value": "play_rate[1147] >= 0.4 in games reaching mid phase", "provisional": true, "params": {"heal_when_damage_ge": ["60", "80", "120"]}},
+     "risk_of_overtightening": "healing when it does not change survival wastes the item and a turn action",
+     "violation_symptom": "wall_underhealed", "pattern": "heal gated on survival-threshold state, not generic"},
+
+    {"id": "H9", "severity": "minor",
+     "claim": "The single ACE SPEC Hero's Cape (+100HP) is misattached by L0 to the current active (e.g., Cinderace) instead of Archaludon, wasting the one-per-deck resource that turns Archaludon into a 400HP wall.",
+     "metric": "play_rate[1159]",
+     "direction": "Hero's Cape should attach only to an Archaludon that is or will be the active wall",
+     "threshold": {"value": "Hero's Cape-on-Archaludon rate >= 0.9 when played", "provisional": true, "params": {"cape_target": ["Archaludon_only", "active_only"]}},
+     "risk_of_overtightening": "holding Cape for a perfect target can leave it stranded in hand if Archaludon keeps getting replaced",
+     "violation_symptom": "ace_spec_misattached", "pattern": "tool target restricted to the win-condition pokemon"},
+
+    {"id": "H10", "severity": "minor",
+     "claim": "Full Metal Lab is a defensive stadium that L0 may fail to keep on the field (not re-playing after the opponent replaces it) or may not prioritize, losing the -30 damage reduction that keeps the Metal wall alive.",
+     "metric": "trigger_fire[stadium_play]",
+     "direction": "self Full Metal Lab should be in play whenever a Metal Pokemon is active and no self-stadium is down and a copy is available",
+     "threshold": {"value": "self-stadium uptime >= 0.7 of mid/late turns", "provisional": true, "params": {"replace_opponent_stadium": ["true", "false"]}},
+     "risk_of_overtightening": "spamming the stadium every turn burns the 4 copies and a card action when the current one already suffices",
+     "violation_symptom": "defensive_stadium_dropped", "pattern": "maintain defensive stadium uptime by held-state, not blind replay"}
+  ],
+  "card_intents": {
+    "190": {"name": "Archaludon ex", "trigger": "evolve when bench Duraludon has metal>=3; be active for Metal Defender", "expected_play_rate": 0.95},
+    "169": {"name": "Duraludon", "trigger": "bench early 1-2 and pre-attach metal for evolution", "expected_play_rate": 0.9},
+    "666": {"name": "Cinderace", "trigger": "if in opening hand, MUST be setup-active via Explosiveness; unplayable from hand afterwards", "expected_play_rate": 0.4},
+    "57": {"name": "Relicanth", "trigger": "bench 1 for Memory Dive; never attack (Fighting cost = type death)", "expected_play_rate": 0.6},
+    "8": {"name": "Basic {M} Energy", "trigger": "attach to Metal Pokemon; route first attach to accelerator Cinderace then to Archaludon", "expected_play_rate": 1.0},
+    "1121": {"name": "Ultra Ball", "trigger": "deckCount>D and a Pokemon line piece is missing; discard dead Cinderace/surplus energy", "expected_play_rate": 0.85},
+    "1152": {"name": "Poke Pad", "trigger": "fetch Duraludon/Cinderace/Relicanth (non-rule-box) when short", "expected_play_rate": 0.7},
+    "1122": {"name": "Pokegear 3.0", "trigger": "dig for a Supporter (Boss/Lillie/Explorer) while deckCount>D", "expected_play_rate": 0.6},
+    "1185": {"name": "Explorer's Guidance", "trigger": "deckCount>D; also dumps Metal to discard for Assemble Alloy fuel; STOP when deck thin", "expected_play_rate": 0.7},
+    "1227": {"name": "Lillie's Determination", "trigger": "hand clogged with dead cards or starved; T1 with 6 prizes draws 8", "expected_play_rate": 0.45},
+    "1097": {"name": "Night Stretcher", "trigger": "recover Duraludon/Archaludon or Metal when discarded/depleted", "expected_play_rate": 0.6},
+    "1147": {"name": "Jumbo Ice Cream", "trigger": "heal active Archaludon (3+ energy) above next-hit lethal", "expected_play_rate": 0.5},
+    "1244": {"name": "Full Metal Lab", "trigger": "keep a self stadium down while a Metal Pokemon is active", "expected_play_rate": 0.6},
+    "1182": {"name": "Boss's Orders", "trigger": "gust a benched target Metal Defender can KO and is worth pulling", "expected_play_rate": 0.5},
+    "1197": {"name": "Xerosic's Machinations", "trigger": "strip opponent hand before their key turn", "expected_play_rate": 0.4},
+    "1159": {"name": "Hero's Cape", "trigger": "attach once to the Archaludon wall (400HP)", "expected_play_rate": 0.6}
+  },
+  "axes": {
+    "speed": 3,
+    "power_curve": 4,
+    "consistency": 2,
+    "recovery": 4,
+    "adaptability": 3,
+    "resource_economy": 2,
+    "disruption_resistance": 3,
+    "prize_race": 4,
+    "accelerator_fragility": 2
+  },
+  "disposition_ledger": {
+    "H1": null, "H2": null, "H3": null, "H4": null, "H5": null,
+    "H6": null, "H7": null, "H8": null, "H9": null, "H10": null
+  }
+}

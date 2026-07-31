@@ -1,0 +1,191 @@
+{
+  "deck": "comfey_yveltal",
+  "archetype": "disruption / energy-denial control-chip (non-rule-box lock)",
+  "expected_dmg": [
+    {"pokemon": 689, "attack": "Oblivion Wing (998)", "formula": "damage = 110 (flat, no scaling; empty attack text)", "verified": true, "note": "requires [7,7,0]=2 Dark+1 Colorless; Dark payable ONLY by Prism attached to a Basic"},
+    {"pokemon": 689, "attack": "Fear (997)", "formula": "damage = 20; effect: defender can't retreat next turn", "verified": true, "note": "requires [7]=1 Dark = 1 Prism"},
+    {"pokemon": 164, "attack": "Flower Selecting (216)", "formula": "damage = 20 + 20*[heads]; E=30, real in {20,40}", "verified": false, "note": "coin-variable, DB damage=20 + text +20 on heads"},
+    {"pokemon": 164, "attack": "Draw (215)", "formula": "damage = 0; effect: EACH player draws 3 (feeds opponent too)", "verified": true, "note": "display-0 draw attack; L0 undervalues as attacker, correct; but self-mills our deck AND refuels opponent"},
+    {"pokemon": 343, "attack": "(477)", "formula": "damage = 30 (flat)", "verified": false, "note": "[0,0]=2 Colorless"}
+  ],
+  "energy_type_check": {
+    "supply": {"Prism(16)x3": "any single type on a Basic (shows as rainbow=10); ONLY Dark source", "Telepath_P(19)x4": "Psychic only (+on-attach-to-P search up to 2 Basic P)", "BasicP(5)x3": "Psychic only", "total_energy": 10, "dark_capable": 3},
+    "attackers": {
+      "689_Yveltal": {"needs": "998=2Dark+1C, 997=1Dark", "dark_source": "Prism only", "verdict": "PRISM-BOTTLENECKED: with 3 Prism total only ONE Yveltal can reach 998 (2 Prism); Psychic energy CANNOT pay any Yveltal attack", "verified_by_probe": true},
+      "164_Comfey": {"needs": "1 Psychic", "verdict": "always payable (Telepath/BasicP/Prism-as-P)", "type_dead": false},
+      "343_Shaymin": {"needs": "2 Colorless", "verdict": "any energy pays", "type_dead": false}
+    }
+  },
+  "self_harm_sweep_2b": {
+    "scanned": 60,
+    "findings": [
+      {"cid": 164, "card": "Comfey", "harm": "attack 215 self-mills 3/use AND draws opponent 3 (anti-deckout for them)", "fire_if": "hand_size < H AND deckCount > K AND on prize-plan (not opp-deckout-plan)"},
+      {"cid": 1227, "card": "Lillie's Determination", "harm": "shuffles ENTIRE hand into deck then draws (can bury NZ/Prism/Boss you intended to play; also net-deckout accelerant)", "fire_if": "not holding {1247 NZ, 16 Prism-needed-this-turn, 1182 Boss-needed} AND deckCount > K"},
+      {"cid": [1122,1152,1086,1097,1194], "card": "search/draw items+Colress", "harm": "thin our deck every use -> self-deckout (this deck has 12+ draw/search cards and no fast win)", "fire_if": "possession-based need AND deckCount > K"}
+    ],
+    "no_self_removal_or_selfdamage_effects": "no ability/attack returns our own Pokemon to hand/deck, no self-damage-counter placement, no forced-self-switch. Only ability is Shaymin Flower Curtain (passive, harmless).",
+    "catastrophic": ["H1", "H2"]
+  },
+  "phases": {
+    "early": {"until": "NZ(1247) in play AND >=1 Yveltal on board AND >=1 Prism secured", "on_plan": "turn(NZ_in_play) <= round 3; used Colress(1194)/Pokegear(1122) to find NZ; Comfey engine online; searchers fire only to fill missing pieces", "recovery": "if NZ not found by round 3, chain Pokegear->Colress; do NOT dump all searchers (deckout)"},
+    "mid": {"until": "one Yveltal armed with 2 Prism (998 online)", "on_plan": "Yveltal attacks 110 every turn; opponent hand kept <=3 (Xerosic) and energy stripped (Hammer/Fan); nonattacking_turn_rate < 0.25", "recovery": "if Prism lost, Night Stretcher(1097) recovers Prism from discard before drilling further"},
+    "late": {"until": "opponent prizes <= 2 OR opponent resource-locked", "on_plan": "close on prizes with Yveltal (KO exes = 2 prizes) or ride deckout; STOP Comfey-215 (feeds opp); protect NZ; Acerola(1228) now legal to shield key mon", "recovery": "if own deckCount <= K, halt all searchers & Comfey-215; win on remaining prizes"}
+  },
+  "doctrines": [
+    {"name": "A: Yveltal control-chip (primary)", "plan": "reserve 2 Prism for one Yveltal, NZ lock, chip 110/turn, take 6 prizes (exes give 2 each) while immune", "discriminating_metric": "energy_attach_share[16(Prism)->689]; A requires Prism concentrated on Yveltal (>=0.7 of Prism attaches to 689). If Prism spreads to Comfey/Shaymin -> type-death"},
+    {"name": "B: resource-lock deckout (backup)", "plan": "if opponent board too tanky for prize race, full energy+hand lock and win by OPPONENT deckout; requires NOT using Comfey-215 and NOT over-drawing ourselves", "discriminating_metric": "loss_share[deckout] ours vs opp AND our deckCount at end; if our deckout>>opp, B is self-defeating -> revert to A"},
+    {"name": "PlanB: Prism lost", "plan": "if Prism prized/discarded (Yveltal 998 unreachable), chip with Comfey-216 (20-40) + Shaymin (30) under NZ immunity and lean on lock/deckout", "discriminating_metric": "play_rate[689 attack 998]; if ~0, confirm Prism availability (Night Stretcher recovery fire)"}
+  ],
+  "tensions": [
+    {"axes": ["draw_engine_consistency", "self_deckout_clock"], "balance": "fire searchers/draw only when a needed piece is missing (possession-based) AND deckCount > K (K in {8..12}); the engine that finds NZ/Prism is the same engine that decks us out"},
+    {"axes": ["Comfey_215_card_advantage", "opponent_anti_deckout"], "balance": "use Comfey-215 only while hand_size<H AND we are on prize-plan; on deckout-plan 215 is forbidden (it draws opponent 3)"},
+    {"axes": ["Prism_on_Yveltal (Dark attacker)", "Prism_as_colorless_filler"], "balance": "Prism attaches to 689 until one Yveltal has 2 Prism; only a genuinely spare 3rd Prism may fill Comfey/Shaymin colorless"},
+    {"axes": ["lock_preservation (NZ uptime)", "prize_aggression"], "balance": "always attack (passivity punished) but pick Boss targets by real-KO value; never expose/discard NZ for tempo (ACE SPEC, unrecoverable from discard)"}
+  ],
+  "hypotheses": [
+    {"id": "H1", "severity": "catastrophic",
+     "claim": "Unconditional use of the 5 draw/search cards (+Comfey-215) decks US out before we win; the control win is slow and the draw engine is the deckout clock",
+     "metric": "loss_share[deckout] (ours), min deckCount reached, play_rate[1122,1152,1086,1097,1194]",
+     "direction": "our deckout loss share must be LOW and below opponent's",
+     "threshold": {"value": "own_deckout_loss < 0.15", "provisional": true, "params": {"K_deck_stop": ["6","8","10","12"], "H_hand_gate": ["4","5","6"]}},
+     "risk_of_overtightening": "gating searchers too hard starves the deck of NZ/Prism/board and prevents the lock from ever forming (no setup = slow loss anyway)",
+     "scenario": "Opponent plays passively/durdles. L0 fires Pokegear+PokePad+Poffin+Night Stretcher+Colress every turn and attacks with Comfey-215 -> our deck empties; PROBED: against a do-nothing opponent we self-decked and LOST 27/40 games, deck hitting 0 around engine-turn 51-95.",
+     "violation_symptom": "self-deckout losses", "pattern": "山切れ負け: 山戻し/掘り停止 (add thin-deck drill halt)"},
+
+    {"id": "H2", "severity": "catastrophic",
+     "claim": "Yveltal is TYPE-DEAD unless armed with Prism: Psychic energy (Telepath/BasicP) can never pay its Dark cost. 997 needs >=1 Prism, 998 needs >=2 Prism. L0 attaches by displayed-damage-max (Yveltal 110) with no type awareness and will load Yveltal with Psychic energy that enables no attack",
+     "metric": "first_attack_turn[689], play_rate[689 atk 998], energy_attach_share[19,5 -> 689]",
+     "direction": "Yveltal only counted 'armed' with Prism; Psychic-only Yveltal attaches must be ~0 / never treated as loaded",
+     "threshold": {"value": "prism_on_Yveltal >= 2 before Yveltal is an attacker", "provisional": true, "params": {"min_prism_for_998": ["2"], "min_prism_for_997": ["1"]}},
+     "risk_of_overtightening": "reserving all Prism for Yveltal denies Comfey/Shaymin a colorless slot (minor: they accept Psychic/any)",
+     "scenario": "Bench a Yveltal, attach 3 Telepath/BasicP to it (L0 sees 110 as max display). PROBED: with 0 Prism attached, NEITHER 997 nor 998 is ever offered even at 20+ Psychic energy; 997 appears only with >=1 Prism, 998 only with >=2 Prism. Yveltal sits 'loaded' but silent.",
+     "violation_symptom": "energa on wrong pokemon / silent attacker", "pattern": "型死ポケモンを装填扱い + 型対応の装填判定"},
+
+    {"id": "H3", "severity": "major",
+     "claim": "Prism (3 copies = only Dark source) mis-allocated to Comfey/Shaymin as colorless filler starves Yveltal of Dark, permanently disabling the 998 win-path",
+     "metric": "energy_attach_share[16 -> non-689]",
+     "direction": "Prism attaches to non-Yveltal must be LOW until a Yveltal has 2 Prism",
+     "threshold": {"value": "prism_to_non_yveltal_share < 0.2", "provisional": true, "params": {"reserve_prism_count": ["2","3"]}},
+     "risk_of_overtightening": "a truly spare 3rd Prism forced onto Yveltal wastes a colorless that Comfey-216 could have used",
+     "scenario": "L0 feeds Comfey-216/215 with Prism because Comfey is active early; by the time Yveltal is set, <2 Prism remain undiscarded",
+     "violation_symptom": "energy to unintended pokemon", "pattern": "エネが意図しないポケモンへ (先貼り/キャップ/順序)"},
+
+    {"id": "H4", "severity": "major",
+     "claim": "Neutralization Zone (the ACE-SPEC ex/V immunity lock) is not prioritized or is lost; it is the deck's win engine and cannot be recovered from discard",
+     "metric": "turn(NZ in play), play_rate[1194 fetch->1247], win_rate | NZ up vs down",
+     "direction": "NZ played early and kept in play",
+     "threshold": {"value": "NZ in play by round 3", "provisional": true, "params": {"colress_prioritize_NZ": ["true"]}},
+     "risk_of_overtightening": "forcing NZ turn-1 via Colress can waste Colress when board/Prism is the more urgent missing piece",
+     "scenario": "L0 treats NZ as a generic stadium, never tutors it with Colress, or lets it be overwritten by opponent's stadium; PROBED: while NZ continuously in play, our non-rule-box active took 0 damage across 4272 frames from an ex attacker (Kangaskhan ex 120) -> losing NZ removes the entire lock",
+     "violation_symptom": "keycard play_rate ~0", "pattern": "発火条件を所持ベースに置換 (Colress tutor + play)"},
+
+    {"id": "H5", "severity": "major",
+     "claim": "A type-dead Yveltal (Psychic energy only) is counted 'loaded' by L0's energy-count retreat/promotion logic, so it is neither retreated nor swapped out while unable to attack",
+     "metric": "nonattacking_turn_rate (Yveltal active), retreat_count",
+     "direction": "nonattacking turns with an unarmed active must be LOW",
+     "threshold": {"value": "nonattacking_turn_rate < 0.2", "provisional": true, "params": {"armed_definition": ["prism_count>=1"]}},
+     "risk_of_overtightening": "over-retreating a nearly-armed Yveltal burns tempo/hand",
+     "scenario": "Yveltal active holding 3 Psychic; L0 (energy-count 'loaded') refuses to retreat (cost 0!) and passes without attacking",
+     "violation_symptom": "durdle / non-attacking active", "pattern": "型対応の装填判定"},
+
+    {"id": "H6", "severity": "major",
+     "claim": "Control decks durdle; this environment punishes non-attacking turns. Yveltal retreat is FREE (0) so there is rarely a reason not to attack once armed",
+     "metric": "nonattacking_turn_rate, first_attack_turn",
+     "direction": "nonattacking_turn_rate LOW once an attack is available",
+     "threshold": {"value": "nonattacking_turn_rate < 0.25", "provisional": true, "params": {"force_attack_if_available": ["true"]}},
+     "risk_of_overtightening": "forcing a weak Comfey-216 over completing setup can waste a turn; only force when an attack has real value",
+     "scenario": "Engine holds attacks/Boss waiting for a 'perfect' lock and passes",
+     "violation_symptom": "hoarding/delay", "pattern": "攻撃優先の均衡則"},
+
+    {"id": "H7", "severity": "major",
+     "claim": "Boss's Orders is mis-gated by L0's 'own active displayed>=60' rule: our active is often Comfey(20) or a type-dead Yveltal, so Boss never fires when an armed Yveltal could KO a benched target, or drags a low-value target",
+     "metric": "gust_targets, play_rate[1182]",
+     "direction": "Boss fires when armed Yveltal (real 110) can KO the dragged target or seal a prize",
+     "threshold": {"value": "boss gated on REAL damage of our attacker, not displayed active", "provisional": true, "params": {"real_dmg_gate": ["110 Yveltal"]}},
+     "risk_of_overtightening": "over-Bossing wastes the supporter slot shared with Xerosic/Lillie",
+     "scenario": "Armed Yveltal on bench/active shows correct 110, but active-display gate reads Comfey; Boss withheld and a lethal is missed",
+     "violation_symptom": "gust misses value", "pattern": "gust: 実打点/サイド期待値ベースの対象選択"},
+
+    {"id": "H8", "severity": "major",
+     "claim": "Crushing Hammer and Xerosic fired without opponent-state gating are wasted (Hammer when opp has no energy; Xerosic when opp hand already <=3)",
+     "metric": "play_rate[1120], play_rate[1197]",
+     "direction": "Hammer fires only when opp has strippable energy; Xerosic only when opp hand > 3",
+     "threshold": {"value": "opp_energy>=1 for Hammer; opp_hand>3 for Xerosic", "provisional": true, "params": {}},
+     "risk_of_overtightening": "over-gating lets the opponent assemble a threat/rebuild hand between windows",
+     "scenario": "L0 dumps Hammer coin-flips at an energy-less board and Xerosic at a 2-card hand",
+     "violation_symptom": "disruption wasted/idle", "pattern": "妨害カードの相手盤面条件限定"},
+
+    {"id": "H9", "severity": "major",
+     "claim": "Lillie's Determination shuffles our hand (incl. NZ/Prism/Boss we meant to play) back into deck and accelerates self-deckout when fired on a generic hand-size<=5 default",
+     "metric": "play_rate[1227], hand_size_dist, deckCount at Lillie fire",
+     "direction": "Lillie withheld when holding NZ/Prism-needed / when deck thin",
+     "threshold": {"value": "fire only if deckCount>K AND not holding key play", "provisional": true, "params": {"K_deck_stop": ["8","10","12"]}},
+     "risk_of_overtightening": "never using Lillie starves redraws when genuinely flooded with dead cards",
+     "scenario": "L0 fires Lillie at hand=5 holding NZ+Prism -> buries the lock pieces and burns deck",
+     "violation_symptom": "keycard buried / deck burn", "pattern": "自己害効果の盤面ゲート + 山薄時の掘り停止"},
+
+    {"id": "H10", "severity": "minor",
+     "claim": "Comfey-215 (each player draws 3) used late feeds the opponent and undermines any deckout plan",
+     "metric": "attack-215 play rate by phase",
+     "direction": "215 usage declines in late phase / on deckout-plan",
+     "threshold": {"value": "215 late-phase rate < early-phase rate", "provisional": true, "params": {}},
+     "risk_of_overtightening": "cutting 215 too early starves our own hand before the lock is set",
+     "scenario": "Locked board, both durdling; L0 keeps Comfey-215'ing and refills the opponent's deck/hand",
+     "violation_symptom": "feeding opponent", "pattern": "tension monitoring (Comfey draw vs opp anti-deckout)"},
+
+    {"id": "H11", "severity": "minor",
+     "claim": "Acerola's Mischief is a dead card until opponent has <=2 prizes; L0 may attempt/queue it early or never use it when it becomes the key ex-shield",
+     "metric": "play_rate[1228] conditioned on opp prize count",
+     "direction": "0 while opp prizes>2; used to shield key mon when opp prizes<=2",
+     "threshold": {"value": "fire only when opp_prizes<=2 and a key mon is threatened", "provisional": true, "params": {}},
+     "risk_of_overtightening": "none material",
+     "scenario": "Engine tries Acerola at 6 prizes (illegal) or ignores it as a finisher-shield at 2",
+     "violation_symptom": "conditional card idle/misfired", "pattern": "妨害/保護カードの条件限定"},
+
+    {"id": "H12", "severity": "minor",
+     "claim": "Handheld Fan (energy-denial tool) should be on the active wall that absorbs hits, not a passive bench sitter, to fire its move-attacker-energy effect",
+     "metric": "which pokemon holds 1161 / trigger fire count",
+     "direction": "Fan on the front-line absorber (Comfey wall / active Yveltal)",
+     "threshold": {"value": "fan attach on active-rotation mon", "provisional": true, "params": {}},
+     "risk_of_overtightening": "none material",
+     "scenario": "Fan attached to a benched Shaymin never triggers",
+     "violation_symptom": "tool never fires", "pattern": "ツール配置最適化"}
+  ],
+  "card_intents": {
+    "1182": {"name": "Boss's Orders", "trigger": "armed_Yveltal_can_KO_dragged_target OR pull key target off bench; gate on REAL damage not displayed active", "expected_play_rate": 0.4},
+    "1197": {"name": "Xerosic's Machinations", "trigger": "opp_hand_size > 3 (strip to 3); competes for supporter slot", "expected_play_rate": 0.3},
+    "164": {"name": "Comfey", "trigger": "early: 215 draw while hand<H & deck>K; mid/late under NZ: 216 chip; core engine/wall (non-rule-box, 70HP)", "expected_play_rate": 0.9},
+    "1122": {"name": "Pokegear 3.0", "trigger": "need a specific supporter (esp Colress->NZ, or Boss) AND deck>K", "expected_play_rate": 0.35},
+    "1227": {"name": "Lillie's Determination", "trigger": "hand flooded with dead cards AND not holding NZ/Prism/Boss AND deckCount>K", "expected_play_rate": 0.2},
+    "1152": {"name": "Poke Pad", "trigger": "board incomplete: fetch Comfey/Yveltal/Shaymin (non-rule-box) AND deck>K", "expected_play_rate": 0.3},
+    "1086": {"name": "Buddy-Buddy Poffin", "trigger": "early bench build; NOTE only fetches <=70HP basics = Comfey only (Shaymin80/Yveltal110 ineligible)", "expected_play_rate": 0.35},
+    "1194": {"name": "Colress's Tenacity", "trigger": "NZ not yet in hand/play -> tutor NZ + an energy (the NZ finder); highest early priority", "expected_play_rate": 0.4},
+    "1097": {"name": "Night Stretcher", "trigger": "recover KO'd Yveltal/Comfey OR (critical) recover a discarded Prism for Dark; possession/discard-based", "expected_play_rate": 0.3},
+    "1120": {"name": "Crushing Hammer", "trigger": "opp has strippable energy on a threat (coin-flip discard)", "expected_play_rate": 0.4},
+    "1228": {"name": "Acerola's Mischief", "trigger": "ONLY legal when opp_prizes<=2; shield key mon from opp ex next turn (dead early)", "expected_play_rate": 0.15},
+    "19": {"name": "Telepath Psychic Energy", "trigger": "attach to Comfey (P) -> pays Comfey + searches Basic P (Comfey) to bench; NEVER the Dark source for Yveltal", "expected_play_rate": 0.8},
+    "16": {"name": "Prism Energy", "trigger": "RESERVE for Yveltal Dark (2 for 998); only Dark source in deck; spare 3rd may fill colorless", "expected_play_rate": 0.7},
+    "5": {"name": "Basic Psychic Energy", "trigger": "P for Comfey / colorless slot for Yveltal 998 (3rd energy) / Shaymin", "expected_play_rate": 0.6},
+    "689": {"name": "Yveltal", "trigger": "main attacker; arm ONE with 2 Prism for 998 (110/turn); 2nd copy = 997 trapper/backup; free retreat", "expected_play_rate": 0.6},
+    "1161": {"name": "Handheld Fan", "trigger": "tool on the front-line absorber -> move attacker's energy to opp bench when hit (energy denial)", "expected_play_rate": 0.5},
+    "343": {"name": "Shaymin", "trigger": "bench sitter: Flower Curtain protects our bench non-rule-box from ALL attacks (covers NZ's non-ex gap); 30 chip if forced active", "expected_play_rate": 0.6},
+    "1247": {"name": "Neutralization Zone", "trigger": "play ASAP and keep up: ACE-SPEC ex/V immunity for non-rule-box (both sides); unrecoverable from discard -> the lock", "expected_play_rate": 0.9}
+  },
+  "axes": {
+    "speed": 2,
+    "power_curve": 2,
+    "consistency": 4,
+    "recovery": 3,
+    "adaptability": 4,
+    "resource_economy": 2,
+    "disruption_resilience": 3,
+    "prize_race_structure": 3,
+    "lock_integrity_invented": 3
+  },
+  "l2_needed": true,
+  "l2_rationale": "L0 will (a) attach wrong-TYPE energy to Yveltal (type-death, H2), (b) self-deckout by firing all searchers unconditionally (H1, both PROBE-CONFIRMED catastrophic), (c) mis-prioritize/discard the single ACE-SPEC lock (H4), and (d) mis-gate every disruption/gust card (H7,H8). The win path is grind/energy-denial, not a prize race, so the generic 'load best-display attacker and swing' policy is actively harmful. L2 required.",
+  "disposition_ledger": {
+    "H1": null, "H2": null, "H3": null, "H4": null, "H5": null, "H6": null,
+    "H7": null, "H8": null, "H9": null, "H10": null, "H11": null, "H12": null
+  }
+}

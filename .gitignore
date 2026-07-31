@@ -1,0 +1,36 @@
+# Large or regenerable artifacts. The repo tracks SOURCE only -- the point of putting it under
+# git was that edits made directly on a rented GPU box were never coming back, and one nearly
+# shipped a v37 bundle labelled v39.
+
+# --- environments and caches ---
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.claude/
+
+# --- competition inputs and generated data (GB-scale, all reproducible) ---
+data/
+logs/
+logs_live/
+scratchpad_replays/
+scratchpad/
+scratchpad_*.txt
+out/
+evaluations/
+panel_frozen/
+
+# --- build outputs ---
+submissions/
+*.tar.gz
+*.onnx
+*.gguf
+*.npy
+*.jsonl.gz
+*.zip
+
+# --- competition-distributed engine ---
+# cg-lib/cg/ is the organiser's game library, including the compiled libcg.so. It is not our
+# work and this repository is public, so it is not redistributed here. Fetch it from the
+# competition to run anything locally.
+cg-lib/

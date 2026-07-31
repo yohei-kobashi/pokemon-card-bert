@@ -1,0 +1,136 @@
+{
+  "deck": "mega_lucario",
+  "expected_dmg": [
+    {"pokemon": 678, "attack": "Mega Brave", "formula": "270 + 30*[PPP_this_turn]  (before weakness/resistance)", "verified": true},
+    {"pokemon": 678, "attack": "Aura Jab", "formula": "130 + 30*[PPP_this_turn]; value += attach min(3, basicF_in_discard) F-energy to a BENCHED pokemon (active never gets fueled by Aura Jab)", "verified": true},
+    {"pokemon": 677, "attack": "Accelerating Stab", "formula": "30 + 30*[PPP_this_turn]", "verified": true}
+  ],
+  "phases": {
+    "early": {"until": "active is Mega Lucario ex (678) AND its energy >= 2", "on_plan": "first_attack_turn(Mega Brave) <= own 2nd-3rd turn; Riolu placed T1, evolved next turn, 2 F attached"},
+    "mid": {"until": "opponent prize_remaining >= 3", "on_plan": "post_ko_attack_rate high; a KO each own turn; self-lock turns filled by Aura Jab(+bench feed) or body relay; a bench Riolu/2nd Lucario kept"},
+    "late": {"until": "opponent prize_remaining <= 2 OR our 2nd Lucario at KO risk", "on_plan": "close 6 prizes; protect last Lucario with Cape/RockFighting/Wally/Switch; STOP non-essential digging when deck thin"}
+  },
+  "doctrines": [
+    {"name": "A_single_attacker_alternator", "plan": "One Mega Lucario alternates Mega Brave(270)->Aura Jab(130)->Mega Brave; only one 3-prize body exposed; ~200 avg dmg/turn", "discriminating_metric": "energy_attach_share concentrated on 1 pokemon; bench_size_dist shows ~0 second evolved Lucario; avg damage/turn ~200"},
+    {"name": "B_twin_tower_relay", "plan": "Two Mega Lucario loaded; alternate which body uses Mega Brave (relay around the self-lock / around Wally-strip / around KO) to output 270-300 EVERY turn; Aura Jab pre-loads the bench body", "discriminating_metric": "bench_size_dist includes a 2nd evolved+loaded Lucario; energy_attach_share split across two 678; but loss_share[prize] rises if opponent 2-KOs. A/B: force >=1 loaded bench Lucario vs single-body, compare winrate and loss_share[prize]"}
+  ],
+  "tensions": [
+    {"axes": ["power_every_turn", "three_prize_exposure"], "balance": "keep a loaded bench Lucario ONLY when active.hp <= opp_max_damage (active at KO risk next turn); otherwise single-body (A) to expose one 3-prize target"},
+    {"axes": ["healing_wally", "stay_loaded"], "balance": "fire Wally only if (active_target next-turn-KO-certain AND another body energy>=2) OR target is benched and not current attacker"},
+    {"axes": ["digging_compression", "deckout_and_combo_discard"], "balance": "stop Ultra Ball / Carmine once board assembled (678 loaded + a bench body); after that only non-discard search (PokePad/Gong/Dusk)"},
+    {"axes": ["fuel_active_max_display", "fuel_bench_continuity"], "balance": "once active.energy>=2, route surplus manual attach and Aura Jab discard-energy to a bench Lucario"}
+  ],
+  "hypotheses": [
+    {"id": "H1", "severity": "catastrophic",
+     "claim": "Generic 'heal-when-damaged' logic fires Wally's Compassion on the active loaded Mega Lucario, stripping its energy to hand (verified ne 2->0) and leaving it unable to attack for ~2 turns",
+     "metric": "trigger_fire[wally]", "direction": "trigger_fire[wally] must be ~0 when the healed target is the ONLY body with energy>=2 (i.e. Wally must not de-load the sole attacker)",
+     "threshold": {"value": "wally_on_sole_attacker_rate <= 0.05", "provisional": true, "params": {"gate_backup_energy": ["1","2"], "gate_ko_margin_hp": ["opp_max_dmg", "opp_max_dmg+30"]}},
+     "risk_of_overtightening": "gating too hard stops legitimate life-saving heals when the Lucario really would die and a backup exists, wasting the 4x Wally as pure dead cards",
+     "scenario": "Active Mega Lucario ex at 310/340 with 2 basic F attached; bench has only an un-evolved Riolu with 0 energy; Wally in hand. L0 heals 30 -> active now 340/340 but 0 energy -> next turn cannot Mega Brave (needs 2), must spend turns re-attaching manually (Aura Jab does NOT fuel the active). Net: a full Mega Brave turn traded for healing 30 while opponent races prizes.",
+     "violation_symptom": "self_inflicted_energy_strip", "pattern": "self_harm_effect_ungated"},
+
+    {"id": "H2", "severity": "catastrophic",
+     "claim": "Generic draw-supporter logic fires Carmine (discard entire hand, draw 5) while holding Mega Lucario ex or the only accessible Riolu, discarding the combo; 678 is unrecoverable from discard",
+     "metric": "play_rate[1192]", "direction": "play_rate[1192] must be ~0 on turns where 678 is in hand and no 678 is already in play",
+     "threshold": {"value": "carmine_with_678_in_hand_rate <= 0.02", "provisional": true, "params": {"gate": ["678_in_hand", "678_in_hand_and_no_678_in_play"]}},
+     "risk_of_overtightening": "blocking Carmine entirely kills its role as the best first-turn dig; keep it firing when hand has no irreplaceable piece",
+     "scenario": "Turn 1-3, hand = {Mega Lucario ex, F Energy, Carmine, 2x filler}, Riolu active on board but not yet evolvable this turn. L0 fires Carmine to dig -> discards the Mega Lucario ex (only copy in hand) -> line broken, must draw into another of the 4 copies. If 678 prize-stuck, game is lost.",
+     "violation_symptom": "combo_piece_discarded", "pattern": "self_harm_effect_ungated"},
+
+    {"id": "H3", "severity": "major",
+     "claim": "Ultra Ball fired unconditionally discards 2 cards; with only 8 Pokemon total it can discard a needed Pokemon / the last F energy / Rock Fighting, a net loss",
+     "metric": "play_rate[1121]", "direction": "play_rate[1121] must drop when the only discardable cards are needed pieces (678, last Riolu, last F)",
+     "threshold": {"value": "ultra_discards_needed_piece_rate <= 0.05", "provisional": true, "params": {"needed_set": ["{678,last_Riolu,last_F}", "{678,last_Riolu,last_F,RockFighting}"]}},
+     "risk_of_overtightening": "over-gating Ultra Ball removes the deck's only tutor for 678 (Poke Pad/Gong cannot fetch it), slowing the combo",
+     "violation_symptom": "search_discards_key", "pattern": "unconditional_ball_thinning"},
+
+    {"id": "H4", "severity": "major",
+     "claim": "After Mega Brave KOs and self-locks, if the active is then KO'd, L0 promotes by displayed damage to a bare/unloaded Lucario or Riolu that cannot attack (no 'loaded' check by energy>=2)",
+     "metric": "post_ko_attack_rate", "direction": "post_ko_attack_rate must stay high; promoted/switched-in body should have energy>=1 (Aura Jab) or >=2 (Mega Brave)",
+     "threshold": {"value": "post_ko_attack_rate >= 0.85", "provisional": true, "params": {"loaded_threshold_energy": ["1","2"]}},
+     "risk_of_overtightening": "forcing only loaded promotions can strand you with no legal promotion; must fall back to any Pokemon when no loaded body exists",
+     "violation_symptom": "post_ko_silent_turn", "pattern": "post_ko_no_attacker"},
+
+    {"id": "H5", "severity": "major",
+     "claim": "L0 pours all energy onto the active Mega Brave attacker (displayed 270) and never pre-loads a bench body, so after the active is KO'd or Wally-stripped there is no ready attacker",
+     "metric": "energy_attach_share", "direction": "once active.energy>=2, share of subsequent energy (manual + Aura Jab) to a bench Lucario/Riolu must be > 0",
+     "threshold": {"value": "bench_feed_share_after_active_loaded >= 0.3", "provisional": true, "params": {"bench_feed_after_active_energy": ["2","3"]}},
+     "risk_of_overtightening": "feeding the bench too early delays reaching 2 energy on the active and pushes back first Mega Brave; only feed bench after active is Mega-Brave-ready",
+     "violation_symptom": "no_second_attacker", "pattern": "energy_misrouted_no_chain"},
+
+    {"id": "H6", "severity": "major",
+     "claim": "Aura Jab's value is undervalued: L0 sees 130<270 and never chooses it proactively, never stocks basic F in discard to enable its bench-acceleration, and may attach 0 (min=0) when it does fire",
+     "metric": "trigger_fire[aura_jab_bench_attach]", "direction": "when Aura Jab is used with basic F in discard and a bench Pokemon present, attached-count should be > 0 (up to min(3, F_in_discard))",
+     "threshold": {"value": "aura_jab_attach_used_rate >= 0.8", "provisional": true, "params": {"min_discard_F_to_value": ["1","2","3"]}},
+     "risk_of_overtightening": "always maximizing Aura Jab attach can dump F onto a bench body you will never promote, wasting energy that the active needs via manual attach",
+     "violation_symptom": "scale_attack_undervalued", "pattern": "scale_value_not_in_perception"},
+
+    {"id": "H7", "severity": "minor",
+     "claim": "Gravity Mountain is mis-timed: either not played vs Stage-2 opponents (its only value) or set down pointlessly (no Stage 2 in play, overwriting a useful stadium); it never hurts our own Stage-1 Mega Lucario (verified)",
+     "metric": "play_rate[1252]", "direction": "play_rate[1252] should correlate with opponent having a Stage 2 in play (or removing an opposing stadium)",
+     "threshold": {"value": "gravity_played_without_target_rate <= 0.3", "provisional": true, "params": {"require_opp_stage2": ["true","false"]}},
+     "risk_of_overtightening": "never playing it forfeits stadium control and the -30 vs Stage-2 metas (e.g. Alakazam)",
+     "violation_symptom": "stadium_misplayed", "pattern": "conditional_card_wasted"},
+
+    {"id": "H8", "severity": "major",
+     "claim": "Boss's Orders gust targeting uses displayed active damage (270 >= 60, always fires) but picks a poor target instead of a KO-able bench threat / prize-dense body given our real 270-300",
+     "metric": "gust_targets", "direction": "gusted target should be one our current attack (270 or 300 with PPP) actually KOs, prioritizing prize value / denying setup",
+     "threshold": {"value": "gust_ko_or_tempo_value_rate >= 0.7", "provisional": true, "params": {"value_model": ["ko_this_turn", "ko_or_high_prize"]}},
+     "risk_of_overtightening": "too strict a target filter wastes the gust when only a chip target exists but pulling it still advances the prize race",
+     "violation_symptom": "gust_low_value", "pattern": "gust_target_by_display_only"},
+
+    {"id": "H9", "severity": "minor",
+     "claim": "Xerosic's Machinations (opp discard to 3) is fired reflexively, burning our once-per-turn supporter slot when we needed to draw/gust/heal",
+     "metric": "play_rate[1197]", "direction": "play_rate[1197] should be low on turns we need our supporter for setup; fire mainly when opp hand is large and we have no better supporter use",
+     "threshold": {"value": "xerosic_over_own_draw_rate <= 0.25", "provisional": true, "params": {"opp_hand_min": ["5","6","7"]}},
+     "risk_of_overtightening": "never using it forfeits real disruption vs combo/hand-reliant opponents",
+     "violation_symptom": "supporter_slot_wasted", "pattern": "disruption_card_wasted"},
+
+    {"id": "H10", "severity": "major",
+     "claim": "No 'stop digging when deck thin' rule: L0 keeps firing Ultra Ball / Carmine / Lillie every turn, and combined with self-lock stalls the game can deck the 60-card list out",
+     "metric": "loss_share[deckout]", "direction": "loss_share[deckout] must stay low; item/draw usage should throttle when deckCount low",
+     "threshold": {"value": "loss_share[deckout] <= 0.05", "provisional": true, "params": {"stop_thinning_deck_count": ["8","12","15"]}},
+     "risk_of_overtightening": "throttling draw too early starves the hand and slows the combo; only throttle NON-essential search once board is assembled",
+     "violation_symptom": "deckout", "pattern": "no_dig_stop_when_thin"},
+
+    {"id": "H11", "severity": "minor",
+     "claim": "Hero's Cape (1 copy) or manual attach may go to a Riolu or an un-needed body instead of the Mega Lucario ex that should be the 440-HP wall",
+     "metric": "play_rate[1159]", "direction": "Hero's Cape, when played, should be attached to a 678 (never a Riolu)",
+     "threshold": {"value": "cape_on_678_rate >= 0.9", "provisional": true, "params": {"target_whitelist": ["{678}"]}},
+     "risk_of_overtightening": "in rare board states (no 678 yet) attaching to a Riolu you will evolve is fine; do not hard-block",
+     "violation_symptom": "tool_misattached", "pattern": "tool_target_by_default"}
+  ],
+  "card_intents": {
+    "6":   {"name": "Basic {F} Energy", "trigger": "attach to active until energy>=2, then surplus to bench body", "expected_play_rate": 1.0},
+    "20":  {"name": "Rock Fighting Energy", "trigger": "attach to the Lucario you must protect (effect-immunity wall)", "expected_play_rate": 0.7},
+    "677": {"name": "Riolu", "trigger": "always T1 active + one benched; keep >=1 in hand", "expected_play_rate": 0.9},
+    "678": {"name": "Mega Lucario ex", "trigger": "evolve the turn after Riolu placed; expose 2nd only when active at KO risk; NEVER discard from hand", "expected_play_rate": 0.6},
+    "1102":{"name": "Dusk Ball", "trigger": "Pokemon shortage; no-discard search of bottom 7", "expected_play_rate": 0.4},
+    "1121":{"name": "Ultra Ball", "trigger": "only if 2 discardable cards are surplus (not 678/last Riolu/last F); stop after board assembled", "expected_play_rate": 0.5},
+    "1123":{"name": "Switch", "trigger": "bring a loaded body active / retreat a de-energized or endangered Lucario without paying retreat 2", "expected_play_rate": 0.4},
+    "1141":{"name": "Premium Power Pro", "trigger": "just before attack when +30 converts a non-KO into a KO (opp active HP in (270,300] for Mega Brave)", "expected_play_rate": 0.6},
+    "1142":{"name": "Fighting Gong", "trigger": "active.energy<2 and no F in hand, or Riolu shortage; safe no-discard", "expected_play_rate": 0.7},
+    "1152":{"name": "Poke Pad", "trigger": "Riolu shortage; no-discard (cannot fetch 678)", "expected_play_rate": 0.6},
+    "1159":{"name": "Hero's Cape", "trigger": "attach to a Mega Lucario ex only (340->440)", "expected_play_rate": 0.5},
+    "1182":{"name": "Boss's Orders", "trigger": "our attack KOs a bench threat / prize-dense target this turn", "expected_play_rate": 0.7},
+    "1192":{"name": "Carmine", "trigger": "dig when hand stuck AND 678 not in hand (avoid discarding combo); best on first turn", "expected_play_rate": 0.5},
+    "1197":{"name": "Xerosic's Machinations", "trigger": "opp hand large AND we don't need our supporter for draw/gust/heal", "expected_play_rate": 0.3},
+    "1227":{"name": "Lillie's Determination", "trigger": "hand thin (<=4) AND not needing Wally/Boss this turn; safe (shuffles, no discard)", "expected_play_rate": 0.8},
+    "1229":{"name": "Wally's Compassion", "trigger": "GATED: target next-turn-KO-certain AND another body energy>=2, OR target benched; NEVER on the sole loaded attacker", "expected_play_rate": 0.4},
+    "1252":{"name": "Gravity Mountain", "trigger": "opponent has a Stage 2 in play, or to remove an opposing stadium; harmless to our Stage-1 wall", "expected_play_rate": 0.4}
+  },
+  "axes": {
+    "speed": 4,
+    "power_curve": 5,
+    "consistency": 3,
+    "recovery": 3,
+    "adaptability": 3,
+    "resource_economy": 3,
+    "disruption_resilience": 2,
+    "prize_race_structure": 2
+  },
+  "disposition_ledger": {
+    "H1": null, "H2": null, "H3": null, "H4": null, "H5": null,
+    "H6": null, "H7": null, "H8": null, "H9": null, "H10": null, "H11": null
+  }
+}

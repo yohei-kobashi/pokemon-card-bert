@@ -1,0 +1,21 @@
+{
+  "run": {
+    "player0": {
+      "agent": "agent",
+      "deck": "__random__"
+    },
+    "player1": {
+      "agent": "agent",
+      "deck": "__random__"
+    }
+  },
+  "play": {
+    "human_deck": "__random__",
+    "ai_agent": "agent",
+    "ai_deck": "__random__"
+  },
+  "submit": {
+    "agent": "agent",
+    "deck": "mega_abomasnow_sample"
+  }
+}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>visualizer</title>
+</head>
+<body>
+    <div>Click the button to play ./vis.json</div>
+    <button id="playBtn">Play vis.json</button>
+    <div id="status"></div>
+    <script>
+        const statusEl = document.getElementById('status');
+
+        function play(text) {
+            const obj = JSON.parse(text);
+
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "json";
+            if ("steps" in obj) {
+                input.value = JSON.stringify(obj["steps"][0][0]["visualize"]);
+            } else {
+                input.value = text;
+            }
+
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = "https://ptcgvis.heroz.jp/Visualizer/Replay/0";
+            form.target = "_blank";
+            form.appendChild(input);
+
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        document.getElementById('playBtn').addEventListener('click', async function() {
+            statusEl.textContent = "loading vis.json ...";
+            try {
+                const res = await fetch('vis.json', { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const text = await res.text();
+                statusEl.textContent = "";
+                play(text);
+            } catch (err) {
+                statusEl.textContent =
+                    "Failed to load vis.json (" + err.message + "). " +
+                    "Open this page via a local server, e.g. run `python -m http.server` " +
+                    "in this folder and visit http://localhost:8000/visualizer.html";
+            }
+        });
+    </script>
+</body>
+</html>

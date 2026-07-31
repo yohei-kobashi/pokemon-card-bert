@@ -1,0 +1,73 @@
+{
+  "deck": "alakazam",
+  "expected_dmg": [
+    {"pokemon": 743, "attack": "Powerful Hand", "attack_id": 1072, "formula": "damage_counters = 2 * cards_in_hand_at_attack ; real_HP = 20 * hand_size", "verified": true, "note": "counter placement (ignores weakness/resistance/damage-reduction); hits opponent Active only; probe: hand6->120HP, hand4->80HP"},
+    {"pokemon": 742, "attack": "Super Psy Bolt", "attack_id": 1071, "formula": "30 fixed", "verified": false, "note": "cost [5]=1 Psychic; off-plan chip"},
+    {"pokemon": 66, "attack": "Land Crush", "attack_id": 76, "formula": "90 fixed", "verified": false, "note": "cost [0,0,0]=3 colorless; backup attacker, but Dudunsparce is mainly a draw body"},
+    {"pokemon": 305, "attack": "Ram", "attack_id": 424, "formula": "20 fixed", "verified": false, "note": "cost [0,0]=2 colorless; rarely relevant"}
+  ],
+  "phases": {
+    "early": {
+      "until": "no Alakazam(743) in play OR Alakazam has 0 Psychic-providing energy",
+      "on_plan": "Abra(741) Active by T1; >=1 bench basic; a Psychic energy (id 5 or 19, NOT Enriching id13) on the Alakazam-line body; Alakazam(743)+Rare Candy(1079) OR Kadabra(742) assembled in hand via Dawn/Hilda/PokePad; hand growing, not being dumped",
+      "recovery": "Dawn(1231)/Hilda(1225) to fetch missing evo pieces; Poffin(1086)/PokePad(1152) to secure basics; Night Stretcher(1097) if pieces already discarded"
+    },
+    "mid": {
+      "until": "Alakazam(743) Active with >=1 Psychic energy and hand_size >= target_HP/20",
+      "on_plan": "each turn: (1) make hand-reducing plays FIRST (bench/attach/rare-candy), (2) evolve Kadabra->Alakazam LAST so Psychic Draw's 3 cards sit in hand at attack, (3) optionally Boss's Orders(1182) to pull a KO-able/high-prize target, (4) Powerful Hand for >= active-target HP. Target hand_size at attack >= 8 (=160)",
+      "recovery": "if hand too small to KO, prefer holding cards / drawing net-positive (Hilda/Dawn/Dudunsparce) over attacking into a whiff"
+    },
+    "late": {
+      "until": "prizes_taken >= 4 OR deckCount <= 8",
+      "on_plan": "chain a fresh Alakazam every turn (main body 140HP is OHKO'd back); recur KO'd Alakazam/Abra/energy with Night Stretcher(1097)/Lana's Aid(1184); fire Sacred Ash(1129) when deckCount<=8 and >=3 Pokemon in discard to dodge deckout; close 6 prizes",
+      "recovery": "Sacred Ash to reset deckout clock; Lana's Aid mass-recovers the evo line + basic energy"
+    }
+  },
+  "hypotheses": [
+    {"id": "H1", "claim": "Powerful Hand has damage=0 in the card DB; a generic engine that ranks attacks by listed damage will value Alakazam's attack at 0 and either refuse to attack with it or prefer a weaker fixed-damage attacker (Land Crush 90, Super Psy Bolt 30), throttling the deck's only real win condition.", "metric": "play_rate[743] / first_attack_turn / gust_targets", "expect": "play_rate[743_powerful_hand] should be the dominant attack (>0.7 of attack turns once online); if ~0, misfire confirmed", "violation_symptom": "スケール技が過小評価される", "pattern": "実打点式(20*hand)を共有知覚 _expected_dmg に昇格"},
+    {"id": "H2", "claim": "Powerful Hand real damage = 20 * hand_size_at_attack. A generic 'attack when able' + 'develop board / play cards' policy dumps the hand to build board, then attacks with a small hand for trivial damage. Probe self-play fired Powerful Hand at hand sizes as low as 2-5 (=40-100).", "metric": "hand_size_dist (on Powerful-Hand attack turns)", "expect": "mean hand_size at Powerful Hand >= 8; fraction of PH attacks with hand<6 should be near 0", "violation_symptom": "攻撃せず抱え込み/遅延 (逆: 撃ち急ぎで手札枯渇)", "pattern": "手札温存則: Powerful Hand ターンは非必須プレイを止め、evolve/draw を最後に回して terminal hand を最大化"},
+    {"id": "H3", "claim": "Powerful Hand costs [5] = 1 PSYCHIC energy. Enriching Energy(13) provides only {C}(colorless) and does NOT satisfy the {P} requirement (probe: Alakazam with only Enriching shows energies=[0]). A generic 'attach best/any energy, treat energized body as loaded' policy can put Enriching on the Alakazam line and mark it装填済み though it can never fire Powerful Hand — a marnie-style 型死.", "metric": "energy_attach_share[13 -> 743/742/741]", "expect": "Enriching(13) attach share onto the Alakazam line ~0; Enriching should feed Dunsparce/Dudunsparce (colorless) or be a pure draw-4 dump", "violation_symptom": "型死ポケモンを装填扱い", "pattern": "型対応の装填判定(数でなく型で装填を判定); Powerful Hand は Psychic(id5/19)必須"},
+    {"id": "H4", "claim": "Boss's Orders(1182) gust value must be computed from Powerful Hand's real formula, not its listed 0 damage. Correct target = a benched Pokemon we can KO this turn (HP <= 20*hand) with highest prize value, or a support piece we can remove; a 0-damage-keyed gust heuristic will mis-target or skip.", "metric": "gust_targets", "expect": "gust chosen target should usually be finishable this turn (target_HP <= 20*hand) or a high-value support; not the tankiest wall", "violation_symptom": "gust が価値を逃す", "pattern": "サイド期待値・実打点(20*hand)ベースの対象選択"},
+    {"id": "H5", "claim": "4x Enhanced Hammer(1081) is a heavy anti-Special-Energy package that is DEAD against decks with no special energy. A generic 'play trainers' policy will burn it with no valid target (or hold it when a target exists).", "metric": "play_rate[1081] conditioned on opponent special-energy presence", "expect": "Enhanced Hammer fires only when opponent has >=1 Special Energy attached; play_rate ~0 vs all-basic-energy opponents", "violation_symptom": "妨害カードの浪費/腐り", "pattern": "相手盤面条件(特殊エネ有)に限定した発火"},
+    {"id": "H6", "claim": "Dudunsparce(66) Run Away Draw draws 3 but SHUFFLES ITSELF (and attached cards) back into the deck. Using it when the hand is already large is pure card-neutral churn that also deletes a 140-HP body/bench sitter and can undo energy investment. Generic 'draw when hand<=5' or 'use available ability' will fire it at the wrong times.", "metric": "play_rate[66_runaway_draw] / bench_size_dist", "expect": "Run Away Draw fires only when hand is small (<=4) AND the Dudunsparce is not a needed attacker/bench body with energy on it", "violation_symptom": "キーカードのプレイ率誤り", "pattern": "手札枚数の汎用閾値でなく '手札<=N かつ 盤面上不要' の所持/盤面状態ベース発火"},
+    {"id": "H7", "claim": "The deck runs a very heavy draw stack (Alakazam draw3-on-evolve, Kadabra draw2, Dudunsparce draw3, Enriching draw4, plus 16 search cards). Probe self-play reached deckCount 0 in at least one game. Deckout is a real secondary loss condition; Sacred Ash(1129, 1 copy) is the only deck-refill.", "metric": "loss_share[deckout] / trigger_fire[sacred_ash]", "expect": "loss_share[deckout] small (<0.15); Sacred Ash fires when deckCount<=8 and >=3 Pokemon sit in discard", "violation_symptom": "山切れ負け", "pattern": "山戻しカードの条件発火(deck<=N かつ トラッシュにPokemon>=M)"},
+    {"id": "H8", "claim": "The deck's only real attacker is the Alakazam line; Dunsparce/Dudunsparce colorless attacks (Ram 20, Land Crush 90) are off-plan and Dudunsparce is really a draw engine. A generic 'concentrate energy on best attacker' that reads Land Crush 90 > Powerful Hand 0 will feed energy to Dudunsparce and starve Alakazam.", "metric": "energy_attach_share[5,19 -> 743/742/741 vs 66/305]", "expect": ">=70% of Psychic energy attaches land on the Alakazam line; Dudunsparce/Dunsparce receive energy only as an emergency backup", "violation_symptom": "エネが意図しないポケモンへ", "pattern": "デッキ固有の給餌計画(Psychic は Alakazam 線へ; 実打点式で最良アタッカーを再定義)"},
+    {"id": "H9", "claim": "Evolution sequencing matters uniquely here: Psychic Draw (Kadabra draw2 / Alakazam draw3) triggers ON EVOLVE and puts cards into hand that then count for Powerful Hand. Evolving to Alakazam LAST in the turn banks +3 cards into the attack hand; evolving early and then playing those cards wastes them.", "metric": "sequence: fraction of turns where the final action before Powerful Hand is the Kadabra->Alakazam evolve", "expect": "on setup turns the last hand-growing play (evolve / Dudunsparce draw / Enriching) precedes the attack; hand not spent after the last draw", "violation_symptom": "スケール技の手札資源を先に吐く", "pattern": "シーケンス則: draw/evolve を攻撃直前に寄せる"},
+    {"id": "H10", "claim": "The deck is acutely vulnerable to opponent hand disruption (Marnie/Iono-type reset): Powerful Hand damage IS the hand, so a forced hand-refresh to a few cards collapses the turn's damage to near zero. The policy should, when disruption is anticipated or hand is small, rebuild hand (search/draw) before committing the attack rather than swinging into a whiffed Powerful Hand.", "metric": "hand_size_dist / nonattacking_turn_rate", "expect": "after a low-hand turn the deck spends a turn re-drawing rather than attacking for <100; avoid PH attacks that fail to KO when a draw-then-attack next turn would KO", "violation_symptom": "手札破壊でスケール技が崩壊", "pattern": "低手札時は再ドロー優先(撃ち急ぎ抑制の均衡則を型スケール技に適用)"},
+    {"id": "H11", "claim": "Battle Cage(1264, stadium) protects the deck's fragile bench (Abra 50HP, Kadabra 80HP, Dunsparce 70HP) from opponent spread/snipe (damage-counter placement on bench). It is only relevant vs spread decks; against non-spread it is inert and playing it just occupies the stadium slot (could even remove a useful own stadium — there is none here, so low cost). Generic stadium play may drop it needlessly or fail to drop it when spread threatens the bench.", "metric": "play_rate[1264] conditioned on opponent spread threat", "expect": "Battle Cage played primarily when opponent has bench-damaging attacks/abilities; otherwise low play_rate", "violation_symptom": "妨害/防御カードの浪費/腐り", "pattern": "相手盤面条件(ベンチspread脅威)に限定したスタジアム設置"},
+    {"id": "H12", "claim": "First Powerful Hand can come as early as T2-T3 via Rare Candy(1079) Abra->Alakazam (skipping Kadabra, losing only Kadabra's draw2). But Rare Candy cannot be used T1 nor on a Pokemon put down this turn, so the earliest realistic online turn is player-turn 2. Speed vs a big enough hand is a tension the policy must balance (don't Rare Candy so early that hand is tiny).", "metric": "first_attack_turn / hand_size at first PH", "expect": "first Powerful Hand around player-turn 2-4 with hand>=7; not a turn-1-impossible / not routinely delayed past turn 5", "violation_symptom": "速度と火力のトレードオフ誤り", "pattern": "オンライン判定を '手札>=閾値 かつ KO可能' に接地"}
+  ],
+  "card_intents": {
+    "743": {"name": "Alakazam", "trigger": "primary attacker; evolve (via Rare Candy or from Kadabra) as the LAST hand-growing play of the turn, then Powerful Hand; Psychic Draw draws 3 into the attack hand", "expected_play_rate": 1.0},
+    "742": {"name": "Kadabra", "trigger": "bridge; if not Rare-Candying, evolve Abra->Kadabra for Psychic Draw (+2) then next turn ->Alakazam; also a 30-dmg stopgap attacker if Alakazam unavailable", "expected_play_rate": 0.7},
+    "741": {"name": "Abra", "trigger": "T1 Active/bench seed for the line; Teleportation Attack is an emergency free-switch, not a damage plan", "expected_play_rate": 1.0},
+    "1079": {"name": "Rare Candy", "trigger": "Abra->Alakazam skip when Alakazam in hand and Abra was in play from a prior turn; not T1; enables T2 Powerful Hand", "expected_play_rate": 0.8},
+    "1231": {"name": "Dawn", "trigger": "supporter (1/turn); fetch Basic+Stage1+Stage2 to assemble the whole Abra/Kadabra/Alakazam line in one card when the line is incomplete in hand", "expected_play_rate": 0.6},
+    "1225": {"name": "Hilda", "trigger": "supporter (1/turn); fetch an Evolution Pokemon + an Energy; net-adds 2 cards to hand (good for Powerful Hand) while completing the line", "expected_play_rate": 0.6},
+    "1086": {"name": "Buddy-Buddy Poffin", "trigger": "early; bench 2 basics <=70HP (Abra 50 / Dunsparce 70) to seed the evo line and Dudunsparce draw", "expected_play_rate": 0.7},
+    "1152": {"name": "Poké Pad", "trigger": "fetch any non-Rule-Box Pokemon (all our mons qualify) to hand; consistency filler that also net-adds a card", "expected_play_rate": 0.6},
+    "19": {"name": "Telepath Psychic Energy", "trigger": "attach to a {P} body (Abra/Kadabra/Alakazam) to provide Psychic AND search 2 Basic {P} to bench; provides the Powerful Hand cost + develops board", "expected_play_rate": 0.7},
+    "5": {"name": "Basic {P} Energy", "trigger": "attach 1 to the Alakazam line to pay Powerful Hand [5]; only ONE Psychic needed per attacker", "expected_play_rate": 0.8},
+    "1182": {"name": "Boss's Orders", "trigger": "supporter (1/turn); gust a benched target we can KO this turn (HP <= 20*hand) or a high-prize/support target; value keyed to Powerful Hand real formula, not 0", "expected_play_rate": 0.5},
+    "1097": {"name": "Night Stretcher", "trigger": "deck<=? or line disrupted; return a KO'd Alakazam/Abra or a Basic {P} energy from discard to rebuild the chain", "expected_play_rate": 0.5},
+    "66": {"name": "Dudunsparce", "trigger": "draw engine: Run Away Draw only when hand<=4 AND it is not a needed energized body (it shuffles ITSELF back); Land Crush 90 is emergency backup attacker only", "expected_play_rate": 0.6},
+    "305": {"name": "Dunsparce", "trigger": "bench body to evolve into Dudunsparce (draw engine); Trading Places free-switch; Ram 20 near-irrelevant", "expected_play_rate": 0.6},
+    "1081": {"name": "Enhanced Hammer", "trigger": "ONLY when opponent has a Special Energy attached; discard it (esp. before their attack); dead vs all-basic decks", "expected_play_rate": 0.3},
+    "13": {"name": "Enriching Energy", "trigger": "attach for the draw-4; provides {C} only, so DO NOT rely on it to power Powerful Hand ([5]=Psychic). Feed to Dudunsparce/Dunsparce colorless costs or treat as a draw card", "expected_play_rate": 0.7},
+    "1184": {"name": "Lana's Aid", "trigger": "supporter; late/recovery: mass-return up to 3 (Alakazam-line Pokemon + Basic energy) from discard to rebuild after trades", "expected_play_rate": 0.4},
+    "1129": {"name": "Sacred Ash", "trigger": "deckCount<=8 AND >=3 Pokemon in discard: shuffle up to 5 Pokemon back to dodge deckout and refill the evo line", "expected_play_rate": 0.3},
+    "1264": {"name": "Battle Cage", "trigger": "stadium; drop when opponent threatens the bench with spread/snipe (damage-counter placement) to protect Abra/Kadabra; otherwise inert", "expected_play_rate": 0.3}
+  },
+  "axes": {
+    "speed": 3,
+    "power_curve": 4,
+    "consistency": 4,
+    "sustain": 4,
+    "adaptability": 3,
+    "resource_economy": 3,
+    "disruption_resilience": 2,
+    "prize_race_structure": 4,
+    "hand_size_management": 5,
+    "deckout_horizon": 2
+  }
+}

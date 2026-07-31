@@ -1,0 +1,572 @@
+{
+ "deck": "manectric",
+ "expected_dmg": [
+  {
+   "pokemon": 737,
+   "attack": "Riotous Blasting",
+   "formula": "200 base; if discard-all-energy chosen -> 200+130 = 330",
+   "verified": true
+  },
+  {
+   "pokemon": 737,
+   "attack": "Flash Ray",
+   "formula": "120 flat; next turn prevent damage from Basic Pokemon attackers",
+   "verified": false
+  },
+  {
+   "pokemon": 272,
+   "attack": "Full Moon Rondo",
+   "formula": "20 + 20*(own_bench + opp_bench); x2 vs Colorless target under Fairy Zone",
+   "verified": false
+  },
+  {
+   "pokemon": 868,
+   "attack": "Split Bomb",
+   "formula": "display 0 -> 60 to each of 2 opponent Pokemon (no W/R on bench)",
+   "verified": false
+  },
+  {
+   "pokemon": 868,
+   "attack": "Disaster Shock",
+   "formula": "190; if discard 2 L -> also Paralyze opponent active",
+   "verified": false
+  },
+  {
+   "pokemon": 377,
+   "attack": "Thunder Raid",
+   "formula": "display 0 -> 210 to 1 opponent BENCHED ex only (discard all energy, no W/R)",
+   "verified": false
+  },
+  {
+   "pokemon": 946,
+   "attack": "Spit Shot",
+   "formula": "display 0 -> 120 to 1 opponent Pokemon (discard all energy, no W/R)",
+   "verified": false
+  },
+  {
+   "pokemon": 140,
+   "attack": "Cruel Arrow",
+   "formula": "display 0 -> 100 to 1 opponent Pokemon (no W/R)",
+   "verified": false
+  },
+  {
+   "pokemon": 736,
+   "attack": "Thunder Jolt",
+   "formula": "30 to opponent + 10 to self",
+   "verified": false
+  }
+ ],
+ "phases": {
+  "early": {
+   "until": "turn <= 3 and eelektrik_in_play < 2",
+   "on_plan": "Electrike>=1 and Eelektrik>=1 in play by T3, discard L>=1 (Ultra Ball seed); no Riotous/Zeraora/Cramorant/Tuck-Tail"
+  },
+  "mid": {
+   "until": "eelektrik>=2 and bench_manectric_energy < 3",
+   "on_plan": "Dynamotor charges a benched Manectric to LLL; first_attack_turn <= 5; first Riotous(330) or Flash Ray"
+  },
+  "late": {
+   "until": "own_prizes <= 4 or deck_count <= 12",
+   "on_plan": "ping-pong Riotous 1HKO each turn, post_ko_attack_rate high; STOP item-search when deck<=12 to avoid deckout"
+  }
+ },
+ "doctrines": [
+  {
+   "name": "A: Manectric ping-pong nuke",
+   "plan": "Charge a benched Mega Manectric to LLL via Dynamotor (bench-only), promote (retreat cost-0 empty active), Riotous 330 discarding all energy; discarded L re-fed by Dynamotor to a 2nd benched Manectric; alternate.",
+   "discriminating_metric": "retreat_count high + energy_attach_share[737] dominant + Riotous(1065) fire rate up vs Flash Ray"
+  },
+  {
+   "name": "B: Eelektross spread + snipe",
+   "plan": "Mega Eelektross Split Bomb 60x2 + Zeraora 210 to benched ex + Cramorant 120 + Fezandipiti 100 to shave prizes across multiple bodies instead of a single nuke.",
+   "discriminating_metric": "play_rate[868,377,946,140] vs play_rate[737]; loss_share[prize] shift"
+  },
+  {
+   "name": "C: Clefairy anti-Colorless tech",
+   "plan": "Keep Lillie's Clefairy ex benched for Fairy Zone (opp Colorless weak to Psychic) and attack with Full Moon Rondo x2 only when a Basic P can be hand-attached.",
+   "discriminating_metric": "play_rate[272 attack 371] and energy_attach_share[272] for Psychic; only vs Colorless-heavy opponents"
+  }
+ ],
+ "tensions": [
+  {
+   "axes": [
+    "power_curve",
+    "resource_economy"
+   ],
+   "balance": "Riotous full-discard mode only when discard_L >= 3 AND eelektrik_in_play >= 2; otherwise hold Flash Ray / hand-attach so the engine can re-feed"
+  },
+  {
+   "axes": [
+    "consistency_digging",
+    "resource_economy"
+   ],
+   "balance": "unconditional search only while deck_count > 12; below that, do not dig if needed piece already in hand"
+  },
+  {
+   "axes": [
+    "staying_power_eelektross",
+    "load_efficiency_eelektrik"
+   ],
+   "balance": "evolve an Eelektrik into Mega Eelektross only when eelektrik_in_play >= 3; never split the accel engine below 2 nodes"
+  }
+ ],
+ "hypotheses": [
+  {
+   "id": "H1",
+   "severity": "catastrophic",
+   "claim": "Engine auto-uses Meowth ex Tuck Tail (returns self + attached to hand) or Scoop Up Cyclone on its own board, bouncing an evolved Mega (losing all setup) or removing the last Pokemon (auto-loss).",
+   "metric": "trigger_fire[tuck_tail]/play_rate[1071], loss_share[board], nonattacking_turn_rate",
+   "direction": "Tuck Tail/Scoop-Up use rate ~0 unless a spare active exists AND a rebuild reason exists; NEVER as the last Pokemon",
+   "threshold": {
+    "value": "tuck_tail_fire_rate <= 0.02",
+    "provisional": true,
+    "params": {
+     "max_fire_rate": [
+      "0.0",
+      "0.02",
+      "0.05"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Blocking Meowth entirely also loses the Last-Ditch Catch Supporter tutor on bench-drop (that ability is harmless; only the attack is the hazard)",
+   "scenario": "Reduce our board to a single Meowth ex active (all others KO'd); engine facing an attack decision selects Tuck Tail 60 -> Meowth leaves play -> no Active Pokemon -> immediate loss (reason 3). Also: promote an evolved Mega Manectric with 3 energy, then Scoop Up Cyclone it back, discarding all setup.",
+   "violation_symptom": "self-board-removal loss",
+   "pattern": "self-harm effect board-state gate"
+  },
+  {
+   "id": "H2",
+   "severity": "catastrophic",
+   "claim": "Ultra Ball (discard 2) or draw-supporters (Lillie's/Naveen/Judge) discard/shuffle away the core payoff (a Mega Manectric, last Boss's, or the last Lightning energy) held in hand.",
+   "metric": "trigger_fire[ultra_ball], hand_size_dist, play_rate[737] realized vs drawn",
+   "direction": "Ultra Ball never discards a Mega/last-L/last-Boss's when no redundant copy exists; Lillie's/Naveen suppressed while holding an unplayed core piece",
+   "threshold": {
+    "value": "core_discard_rate <= 0.03",
+    "provisional": true,
+    "params": {
+     "core_discard_rate": [
+      "0.0",
+      "0.03",
+      "0.08"
+     ]
+    }
+   },
+   "risk_of_overtightening": "If we forbid all discards the deck cannot pay Ultra Ball's cost nor seed the discard pile with L for Dynamotor -> engine never turns on",
+   "scenario": "Hand = {Mega Manectric, Ultra Ball, 2 filler}; engine plays Ultra Ball and discards the Mega Manectric to pay the cost, losing the only payoff copy for the turn (Night Stretcher may not be drawn).",
+   "violation_symptom": "key card to trash",
+   "pattern": "recovery-based / possession-gated firing"
+  },
+  {
+   "id": "H3",
+   "severity": "major",
+   "claim": "Deck loses primarily by deckout: over-digging (4 Lillie's + 4 Ultra Ball + 4 Poke Pad + 3 Poffin + Naveen/Judge/Surfer) against a 10-energy, stall-prone shell exhausts the deck.",
+   "metric": "loss_share[deckout], deck_count over time, first_attack_turn",
+   "direction": "loss_share[deckout] below L0 baseline; digging halts when deck thin",
+   "threshold": {
+    "value": "loss_share[deckout] <= 0.20",
+    "provisional": true,
+    "params": {
+     "stop_dig_deck": [
+      "10",
+      "12",
+      "15"
+     ],
+     "lillie_hand_cap": [
+      "3",
+      "4",
+      "5"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Cutting draw too early bricks the 2-line (Tynamo->Eelektrik AND Electrike->Mega) setup and starves the engine of pieces",
+   "scenario": null,
+   "violation_symptom": "deckout loss",
+   "pattern": "deck-empty loss (dig-stop when deck thin)"
+  },
+  {
+   "id": "H4",
+   "severity": "major",
+   "claim": "Riotous Blasting (the 330 payoff) almost never fires because Dynamotor is bench-only and cannot deliver LLL to the ACTIVE Manectric; the engine settles for Flash Ray/Split Bomb chip damage.",
+   "metric": "attack usage share Riotous(1065) vs Flash Ray(1064), first_attack_turn, expected_dmg awareness",
+   "direction": "once engine online (eelektrik>=2, discard_L>=3), Riotous fire rate rises above threshold",
+   "threshold": {
+    "value": "riotous_share >= 0.35 of Manectric attacks after T5",
+    "provisional": true,
+    "params": {
+     "riotous_share": [
+      "0.25",
+      "0.35",
+      "0.5"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Forcing Riotous every turn strips energy faster than Dynamotor re-feeds -> the power/economy tension breaks and Manectric sits empty",
+   "scenario": null,
+   "violation_symptom": "key card play rate ~0",
+   "pattern": "scale-attack real-damage promotion + bench-charge-then-promote doctrine"
+  },
+  {
+   "id": "H5",
+   "severity": "major",
+   "claim": "Dynamotor/hand energy is fed to the wrong body: probes show L piling on Eelektrik(512) and Clefairy(272)/Tynamo(511) instead of a benched Manectric/Eelektross awaiting promotion.",
+   "metric": "energy_attach_share[512,272,511] vs energy_attach_share[737,868]",
+   "direction": "attach share to payoff bodies (737/868) dominates; near-zero L onto Clefairy/Tynamo",
+   "threshold": {
+    "value": "attach_share[737,868] >= 0.6 of Dynamotor targets",
+    "provisional": true,
+    "params": {
+     "payoff_share": [
+      "0.5",
+      "0.6",
+      "0.75"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Eelektrik itself needs LLC to use Electric Ball as an emergency attacker; a hard ban on feeding it removes a fallback body",
+   "scenario": null,
+   "violation_symptom": "energy to unintended Pokemon",
+   "pattern": "deck-specific feeding plan (allow-list of loading bodies)"
+  },
+  {
+   "id": "H6",
+   "severity": "major",
+   "claim": "The engine over-evolves Eelektrik into Mega Eelektross (display 190 > Manectric-line pieces) and cannibalizes the Dynamotor engine, leaving too few accel nodes.",
+   "metric": "play_rate[868], count of Eelektrik(512) remaining in play when 868 evolved, energy supply rate",
+   "direction": "Eelektross evolution only when eelektrik_in_play >= 3; engine node count stays >= 2",
+   "threshold": {
+    "value": "evolve_868_with_eelektrik_ge_3 rate >= 0.9",
+    "provisional": true,
+    "params": {
+     "min_eelektrik_before_868": [
+      "2",
+      "3"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Never evolving Eelektross removes the spread/paralyze Plan B entirely when Manectric line is dead",
+   "scenario": null,
+   "violation_symptom": "engine self-consumed",
+   "pattern": "evolution gated by engine-node count"
+  },
+  {
+   "id": "H7",
+   "severity": "major",
+   "claim": "Clefairy is treated as an attacker and fed Lightning, but Full Moon Rondo needs a Psychic energy that the L-only accel cannot supply (only 2 basic P, un-accelerated).",
+   "metric": "energy_attach_share[272], play_rate[272 attack 371], type of energy on 272",
+   "direction": "no Lightning attached to Clefairy for attacking; Clefairy used as Fairy-Zone ability piece unless a Psychic is hand-available",
+   "threshold": {
+    "value": "L_on_clefairy_for_attack <= 0.05",
+    "provisional": true,
+    "params": {
+     "tol": [
+      "0.0",
+      "0.05",
+      "0.1"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Blocking all energy on Clefairy prevents the rare-but-real anti-Colorless Full Moon Rondo x2 line when a Psychic IS available",
+   "scenario": null,
+   "violation_symptom": "type-dead Pokemon loaded as attacker",
+   "pattern": "type-aware loading (distinguish wall vs loaded by energy TYPE)"
+  },
+  {
+   "id": "H8",
+   "severity": "major",
+   "claim": "Prize race is structurally adverse: both Megas give up 3 prizes each and the entire board is Fighting-weak, so two Mega KOs = game over unless Riotous keeps taking a KO every turn.",
+   "metric": "loss_share[prize], post_ko_attack_rate, own Mega KO count per game",
+   "direction": "maintain a 1HKO chain (post_ko_attack_rate high); do not stall behind Flash Ray",
+   "threshold": {
+    "value": "post_ko_attack_rate >= 0.7",
+    "provisional": true,
+    "params": {
+     "chain_rate": [
+      "0.6",
+      "0.7",
+      "0.8"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Forcing attacks into unfavorable trades (attacking when we cannot KO) can expose a 3-prize Mega for nothing",
+   "scenario": null,
+   "violation_symptom": "prize-race loss",
+   "pattern": "attack-priority equilibrium (passivity is harmful)"
+  },
+  {
+   "id": "H9",
+   "severity": "minor",
+   "claim": "Energy-discarding snipers (Zeraora Thunder Raid / Cramorant Spit Shot) are fired indiscriminately, stripping all energy for low value (e.g., Thunder Raid vs an opponent with no benched ex = 0-value self-strip).",
+   "metric": "play_rate[377,946], gust_targets, energy on self after these attacks",
+   "direction": "Thunder Raid only when a benched ex target exists AND snipe value > energy loss; Spit Shot only for a board-swinging 120",
+   "threshold": {
+    "value": "wasteful_snipe_rate <= 0.1",
+    "provisional": true,
+    "params": {
+     "tol": [
+      "0.05",
+      "0.1",
+      "0.2"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Over-gating removes the burst snipe answers to fragile key benched threats",
+   "scenario": null,
+   "violation_symptom": "disruption/attack wasted",
+   "pattern": "target-existence-gated firing"
+  },
+  {
+   "id": "H10",
+   "severity": "minor",
+   "claim": "The engine burns turns on zero-damage/stall lines: Tynamo Hold Still (0 dmg heal), Flash Ray as a wall, or non-attacking setup turns, which compounds deckout in a stall.",
+   "metric": "nonattacking_turn_rate, first_attack_turn, play_rate[725 Hold Still]",
+   "direction": "nonattacking_turn_rate below baseline; Hold Still never chosen as an active attack",
+   "threshold": {
+    "value": "nonattacking_turn_rate <= 0.25",
+    "provisional": true,
+    "params": {
+     "tol": [
+      "0.2",
+      "0.25",
+      "0.35"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Some setup turns are genuinely correct T1-T2; forcing an attack too early can waste a fragile attacker",
+   "scenario": null,
+   "violation_symptom": "passivity/hoarding",
+   "pattern": "attack-priority equilibrium"
+  },
+  {
+   "id": "H11",
+   "severity": "minor",
+   "claim": "Boss's Orders is used without a lethal/high-value follow-up (gusting an active with no KO available), wasting the deck's only pull-and-punish supporters.",
+   "metric": "gust_targets, play_rate[1182], KO-after-gust rate",
+   "direction": "Boss's used only when Riotous/snipe can KO the pulled target this turn",
+   "threshold": {
+    "value": "boss_without_ko_rate <= 0.2",
+    "provisional": true,
+    "params": {
+     "tol": [
+      "0.1",
+      "0.2",
+      "0.3"
+     ]
+    }
+   },
+   "risk_of_overtightening": "Occasionally gusting to remove a wall/attacker for tempo (not KO) is correct; over-gating loses that",
+   "scenario": null,
+   "violation_symptom": "gust wasted",
+   "pattern": "prize-EV / real-damage-based target selection"
+  }
+ ],
+ "card_intents": {
+  "511": {
+   "name": "Tynamo",
+   "trigger": "early, eelektrik+tynamo<3; do not attack (Hold Still)",
+   "expected_play_rate": 0.9
+  },
+  "512": {
+   "name": "Eelektrik",
+   "trigger": "discard_L>=1 and a benched attacker has energy<3; feed benched Manectric/Eelektross ONLY (not Clefairy/Tynamo)",
+   "expected_play_rate": 1.0
+  },
+  "736": {
+   "name": "Electrike",
+   "trigger": "benched, evolve target for Mega Manectric; accept L pre-attach for lift",
+   "expected_play_rate": 0.9
+  },
+  "737": {
+   "name": "Mega Manectric ex",
+   "trigger": "charge LLL on bench then promote; full-discard Riotous when discard_L>=3 & eelektrik>=2",
+   "expected_play_rate": 0.8
+  },
+  "272": {
+   "name": "Lillie's Clefairy ex",
+   "trigger": "Fairy Zone passive when benched; attack only if a basic P can be hand-attached",
+   "expected_play_rate": 0.3
+  },
+  "868": {
+   "name": "Mega Eelektross ex",
+   "trigger": "evolve only when eelektrik_in_play>=3; Split Bomb spread / Disaster paralyze as Plan B",
+   "expected_play_rate": 0.3
+  },
+  "377": {
+   "name": "Zeraora",
+   "trigger": "opponent has a benched threat-ex AND self L>=3 AND energy loss affordable",
+   "expected_play_rate": 0.2
+  },
+  "140": {
+   "name": "Fezandipiti ex",
+   "trigger": "Flip the Script after our Pokemon KO'd last turn; Cruel Arrow when 3 energy present",
+   "expected_play_rate": 0.5
+  },
+  "1071": {
+   "name": "Meowth ex",
+   "trigger": "Last-Ditch Catch on bench-drop (tutor Supporter); Tuck Tail ONLY with a spare active present",
+   "expected_play_rate": 0.5
+  },
+  "235": {
+   "name": "Budew",
+   "trigger": "opponent Item-dependent (early); 0-cost Itchy Pollen item-lock",
+   "expected_play_rate": 0.3
+  },
+  "343": {
+   "name": "Shaymin",
+   "trigger": "Flower Curtain passive protects non-RuleBox bench (Tynamo/Electrike); rarely attacks",
+   "expected_play_rate": 0.3
+  },
+  "946": {
+   "name": "Cramorant",
+   "trigger": "Spit Shot 120 snipe when board-swinging; never Water Gun (0 water)",
+   "expected_play_rate": 0.2
+  },
+  "1227": {
+   "name": "Lillie's Determination",
+   "trigger": "hand<=A (A in {3,4,5}) and not holding an unplayed core piece",
+   "expected_play_rate": 0.6
+  },
+  "1121": {
+   "name": "Ultra Ball",
+   "trigger": "key Pokemon missing OR want to seed discard with L; discard 2 non-core cards",
+   "expected_play_rate": 0.8
+  },
+  "1152": {
+   "name": "Poke Pad",
+   "trigger": "Tynamo/Eelektrik/Electrike short; cannot fetch Mega/ex",
+   "expected_play_rate": 0.6
+  },
+  "1086": {
+   "name": "Buddy-Buddy Poffin",
+   "trigger": "bench<3 early; fetches Tynamo/Electrike/Budew (<=70HP)",
+   "expected_play_rate": 0.8
+  },
+  "1239": {
+   "name": "Naveen",
+   "trigger": "hand<=4 and have filler to discard; not holding core",
+   "expected_play_rate": 0.5
+  },
+  "1182": {
+   "name": "Boss's Orders",
+   "trigger": "can KO the pulled benched target this turn with Riotous/snipe",
+   "expected_play_rate": 0.5
+  },
+  "1097": {
+   "name": "Night Stretcher",
+   "trigger": "a Mega or a Lightning energy is in discard and needed",
+   "expected_play_rate": 0.5
+  },
+  "1174": {
+   "name": "Air Balloon",
+   "trigger": "attach to Eelektrik/Eelektross (retreat 2) stuck active",
+   "expected_play_rate": 0.4
+  },
+  "1264": {
+   "name": "Battle Cage",
+   "trigger": "opponent places damage counters on bench (spread meta)",
+   "expected_play_rate": 0.3
+  },
+  "1203": {
+   "name": "Surfer",
+   "trigger": "want to retreat active and draw to 5",
+   "expected_play_rate": 0.3
+  },
+  "1213": {
+   "name": "Judge",
+   "trigger": "opponent hoarding a developed hand",
+   "expected_play_rate": 0.2
+  },
+  "1219": {
+   "name": "Team Rocket's Petrel",
+   "trigger": "need a specific Trainer (Boss's/Battle Cage)",
+   "expected_play_rate": 0.3
+  },
+  "1119": {
+   "name": "Energy Search",
+   "trigger": "Lightning short in hand/field",
+   "expected_play_rate": 0.3
+  },
+  "1123": {
+   "name": "Switch",
+   "trigger": "need free retreat when Air Balloon/retreat-0 unavailable",
+   "expected_play_rate": 0.2
+  },
+  "1093": {
+   "name": "Scoop Up Cyclone",
+   "trigger": "rescue a dying own Pokemon with rebuild in hand; NEVER bounce a set-up Mega",
+   "expected_play_rate": 0.15
+  },
+  "4": {
+   "name": "Basic Lightning Energy",
+   "trigger": "hand-attach to active attacker or pre-attach Electrike; never to Tynamo/Clefairy",
+   "expected_play_rate": 1.0
+  },
+  "5": {
+   "name": "Basic Psychic Energy",
+   "trigger": "only when using Clefairy Full Moon Rondo",
+   "expected_play_rate": 0.15
+  }
+ },
+ "axes": {
+  "speed": 2,
+  "power_curve": 4,
+  "consistency": 2,
+  "staying_power": 3,
+  "adaptability": 3,
+  "resource_economy": 2,
+  "disruption_resistance": 2,
+  "prize_race": 2,
+  "load_efficiency": 2
+ },
+ "disposition_ledger": {
+  "H1": null,
+  "H2": null,
+  "H3": null,
+  "H4": null,
+  "H5": null,
+  "H6": null,
+  "H7": null,
+  "H8": null,
+  "H9": null,
+  "H10": null,
+  "H11": null
+ },
+ "lines": [
+  {
+   "name": "pingpong_economy",
+   "verified_by": "DB: Mega Manectric rc0; Dynamotor attaches L FROM DISCARD to BENCHED (ATTACH_TO probe; targets were scattered -> routed); Riotous 330 = 200+130 discard-all (P0 probe)",
+   "setup": "T<=4: Eelektrik line online; charge Mega Manectric #1 to LLL (manual + Dynamotor)",
+   "loop": "Riotous 330 (discards 3L = Dynamotor fuel) -> free retreat (rc0) -> Dynamotor recharges the benched twin from the discard -> twin swings",
+   "finisher": "Boss + 330; Split Bomb/snipers as chip",
+   "invariants": [
+    {
+     "id": "payoff_armed",
+     "type": "armed_bodies",
+     "cid": 737,
+     "energy": 4,
+     "min_energy": 3,
+     "count": 1,
+     "by_turn": 8
+    },
+    {
+     "id": "attacks_flow",
+     "type": "attack_rate_after",
+     "turn": 6,
+     "min": 0.8
+    }
+   ],
+   "combo_edges": [
+    {
+     "edge": "Riotous discard-all -> discard L = Dynamotor fuel",
+     "individually_negative": true
+    },
+    {
+     "edge": "rc0 rotation -> 330/turn with two bodies",
+     "individually_negative": true
+    },
+    {
+     "edge": "discard L from hand (Ultra Ball/Trade-like costs) -> accel",
+     "individually_negative": true
+    }
+   ]
+  }
+ ]
+}

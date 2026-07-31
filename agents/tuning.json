@@ -1,0 +1,3322 @@
+{
+ "alakazam": {
+  "_bench_note": "bench_target stays at the class default 3. Raising it to 4 (the live agents hold 3.25) measured WORSE on both decks -- hand at Powerful Hand 11.71->11.37 and 11.30->11.00, win 50->48 and 62->60. Benching a Pokemon COSTS a card from hand, and this deck's damage IS 20 x hand size, so every extra body is -20 damage. The live 3.25 bench is a CONSEQUENCE of them drawing more, not a cause.",
+  "_line_note": "card_roles order Abra/Kadabra=engine(705) > Dunsparce/Dudunsparce=line(605) > Alakazam=win(905). Reason: _card_need = tier + usefulness//10, and Dawn picks a Basic / a Stage 1 / a Stage 2 by that score. BEFORE: Abra 605 == Dunsparce 605 (a COIN FLIP for the Basic) and Kadabra 605 < Dudunsparce 705 (the Stage-1 pick took the draw engine, not the line). AFTER: line 82% Kadabra in losses (was 71%), Abra 98% (was 93%), Dawn 1.75/g (live 1.77). BUT this is a WASH, not a win: Alakazam-in-play in losses moved only 76% -> 77%, alakazam hand at Powerful Hand got WORSE 11.56 -> 10.79 and win stayed 50%; nz_fez improved 62 -> 66%. Kept because win >= before on both decks. NOTE the tension: Dudunsparce draws 3 and this deck's damage IS 20 x hand size, so the engine outranking the line may have been RIGHT -- the fix trades hand size for line consistency.",
+  "archetype": "combo",
+  "card_roles": {
+   "1079": "engine",
+   "1081": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "1129": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1184": "tech",
+   "1225": "line",
+   "1231": "engine",
+   "1264": "tech",
+   "13": "engine",
+   "19": "fuel",
+   "305": "line",
+   "5": "fuel",
+   "66": "line",
+   "741": "engine",
+   "742": "engine",
+   "743": "win"
+  },
+  "deck_recover_cards": [
+   1129
+  ],
+  "draw_supporters": [
+   1231
+  ],
+  "draw_threshold": 30,
+  "engine": "v2",
+  "l2": "alakazam",
+  "live": {
+   "best_score": 657.5,
+   "last_submitted": "2026-07-17",
+   "submissions": 7
+  },
+  "main_attackers": [
+   743
+  ],
+  "roles": {
+   "743": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1231
+  ],
+  "setup_by_role": true,
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "alakazam_nz": {
+  "_bench_note": "bench_target stays at the class default 3. Raising it to 4 (the live agents hold 3.25) measured WORSE on both decks -- hand at Powerful Hand 11.71->11.37 and 11.30->11.00, win 50->48 and 62->60. Benching a Pokemon COSTS a card from hand, and this deck's damage IS 20 x hand size, so every extra body is -20 damage. The live 3.25 bench is a CONSEQUENCE of them drawing more, not a cause.",
+  "_retired_note": "REDUNDANT, not weak: 59/60 identical to alakazam_nz_fez -- they differ by ONE card (Night Stretcher) -- and nz_fez has a live 664.5 while nz has NO live score at all. Self-play rates nz our strongest alakazam (mega_lucario only 36% vs it), but self-play is 23pt wrong about this matchup (says 38% where live says 15%), so it cannot decide this. Retired 2026-07-17 on redundancy + absence of live evidence.",
+  "archetype": "combo",
+  "card_roles": {
+   "1079": "engine",
+   "1081": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "1129": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1184": "tech",
+   "1197": "tech",
+   "1225": "line",
+   "1231": "engine",
+   "1247": "tech",
+   "19": "fuel",
+   "305": "line",
+   "5": "fuel",
+   "66": "line",
+   "741": "engine",
+   "742": "engine",
+   "743": "win"
+  },
+  "deck_recover_cards": [
+   1129
+  ],
+  "draw_supporters": [
+   1231
+  ],
+  "draw_threshold": 30,
+  "engine": "v2",
+  "l2": "alakazam",
+  "main_attackers": [
+   743
+  ],
+  "roles": {
+   "743": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1231
+  ],
+  "setup_by_role": true,
+  "status": "retired",
+  "style": "evolve"
+ },
+ "alakazam_nz_fez": {
+  "_bench_note": "bench_target stays at the class default 3. Raising it to 4 (the live agents hold 3.25) measured WORSE on both decks -- hand at Powerful Hand 11.71->11.37 and 11.30->11.00, win 50->48 and 62->60. Benching a Pokemon COSTS a card from hand, and this deck's damage IS 20 x hand size, so every extra body is -20 damage. The live 3.25 bench is a CONSEQUENCE of them drawing more, not a cause.",
+  "archetype": "combo",
+  "card_roles": {
+   "1079": "engine",
+   "1081": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "1129": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1184": "tech",
+   "1197": "tech",
+   "1225": "line",
+   "1231": "engine",
+   "1247": "tech",
+   "140": "engine",
+   "19": "fuel",
+   "305": "line",
+   "5": "fuel",
+   "66": "line",
+   "741": "engine",
+   "742": "engine",
+   "743": "win"
+  },
+  "draw_supporters": [
+   1231
+  ],
+  "draw_threshold": 30,
+  "engine": "v2",
+  "l2": "alakazam",
+  "live": {
+   "best_score": 664.5,
+   "last_submitted": "2026-07-17",
+   "submissions": 3
+  },
+  "main_attackers": [
+   743
+  ],
+  "residual_cards": [
+   1197
+  ],
+  "roles": {
+   "743": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1231
+  ],
+  "setup_by_role": true,
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "alakazam_xero": {
+  "_bench_note": "bench_target stays at the class default 3. Raising it to 4 (the live agents hold 3.25) measured WORSE on both decks -- hand at Powerful Hand 11.71->11.37 and 11.30->11.00, win 50->48 and 62->60. Benching a Pokemon COSTS a card from hand, and this deck's damage IS 20 x hand size, so every extra body is -20 damage. The live 3.25 bench is a CONSEQUENCE of them drawing more, not a cause.",
+  "_retired_note": "Live 559.7 vs alakazam_nz_fez 664.5 and alakazam 657.5 -- ~100pt below both keepers, on the only signal that is trustworthy. 96% identical to nz_fez anyway (2 cards). Retired 2026-07-17; the deck file and its 559.7 submission stay.",
+  "archetype": "combo",
+  "card_roles": {
+   "1079": "engine",
+   "1081": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "1129": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1184": "tech",
+   "1197": "tech",
+   "1225": "line",
+   "1231": "engine",
+   "13": "engine",
+   "19": "fuel",
+   "305": "line",
+   "5": "fuel",
+   "66": "line",
+   "741": "engine",
+   "742": "engine",
+   "743": "win"
+  },
+  "draw_supporters": [
+   1231
+  ],
+  "draw_threshold": 30,
+  "engine": "v2",
+  "l2": "alakazam",
+  "live": {
+   "best_score": 559.7,
+   "last_submitted": "2026-07-14",
+   "submissions": 1
+  },
+  "main_attackers": [
+   743
+  ],
+  "residual_cards": [
+   1197
+  ],
+  "roles": {
+   "743": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1231
+  ],
+  "setup_by_role": true,
+  "status": "retired",
+  "style": "evolve"
+ },
+ "archaludon": {
+  "arch_mixin": true,
+  "archetype": "ramp",
+  "card_roles": {
+   "1097": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1147": "tech",
+   "1152": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1185": "engine",
+   "1197": "tech",
+   "1227": "engine",
+   "1244": "engine",
+   "169": "line",
+   "190": "win",
+   "57": "tech",
+   "666": "engine",
+   "8": "fuel"
+  },
+  "disrupt_cards": [
+   1197
+  ],
+  "engine": "v2",
+  "heal_cards": [
+   1147
+  ],
+  "l2": "config",
+  "line": {
+   "big": [
+    224,
+    253,
+    965
+   ],
+   "discard_fuel": [],
+   "focus": [
+    190,
+    169,
+    666
+   ],
+   "need": {
+    "169": 3,
+    "190": 3,
+    "666": 1
+   },
+   "stadiums": [
+    1244
+   ]
+  },
+  "search_items": [
+   1185
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "black_kyurem": {
+  "_dawn_note": "Do NOT add draw_supporters=[Dawn 1231] to the decks that run Dawn. Tested on all 10 of them at matched 150 games/opponent: the 5 where Dawn actually started firing (black_kyurem 1.35/g, mega_heracross 1.22, hydreigon 0.95, marnie_grimmsnarl 0.66, zangoose 0.60) averaged +0.84pt -- and the other 5, where Dawn went 0.00 -> 0.00 and the pilot did not change AT ALL, averaged +0.72pt while swinging -3.8 to +4.2. That unchanged cohort IS the noise floor of the experiment, and the effect is inside it. Dawn only paid off on alakazam because it was paired with draw_threshold=30, which is only justified where the damage IS the hand size (Powerful Hand = 20 x hand). Here the default draw_threshold=5 gate blocks it anyway.",
+  "archetype": "spread",
+  "card_roles": {
+   "1086": "engine",
+   "1097": "engine",
+   "1119": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1125": "engine",
+   "1152": "tech",
+   "1182": "tech",
+   "1205": "engine",
+   "1210": "engine",
+   "1227": "engine",
+   "1231": "engine",
+   "140": "engine",
+   "179": "win",
+   "3": "fuel",
+   "305": "engine"
+  },
+  "engine": "v2",
+  "l2": "black_kyurem",
+  "search_items": [
+   1210,
+   1231
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "ceruledge": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "1097": "engine",
+   "11": "tech",
+   "1121": "engine",
+   "1128": "engine",
+   "1142": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1185": "engine",
+   "1192": "engine",
+   "1256": "tech",
+   "140": "engine",
+   "2": "fuel",
+   "204": "line",
+   "319": "line",
+   "320": "win",
+   "6": "fuel",
+   "675": "engine",
+   "676": "engine",
+   "796": "line"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    183,
+    446,
+    980
+   ],
+   "discard_fuel": [],
+   "focus": [
+    320,
+    676,
+    140
+   ],
+   "need": {
+    "140": 3,
+    "320": 1,
+    "676": 1
+   },
+   "stadiums": [
+    1256
+   ]
+  },
+  "search_items": [
+   1185
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "chandelure": {
+  "arch_mixin": true,
+  "archetype": "control",
+  "card_roles": {
+   "1079": "engine",
+   "1081": "tech",
+   "1086": "engine",
+   "1097": "engine",
+   "1119": "tech",
+   "1120": "tech",
+   "1123": "tech",
+   "1152": "engine",
+   "1166": "tech",
+   "1182": "tech",
+   "1186": "tech",
+   "1197": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1231": "engine",
+   "1247": "engine",
+   "164": "engine",
+   "2": "fuel",
+   "343": "tech",
+   "494": "line",
+   "5": "fuel",
+   "97": "line",
+   "98": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    123,
+    216,
+    699
+   ],
+   "discard_fuel": [],
+   "focus": [
+    98,
+    494,
+    164
+   ],
+   "need": {
+    "164": 1,
+    "494": 1,
+    "98": 1
+   },
+   "stadiums": [
+    1247
+   ]
+  },
+  "search_items": [
+   1231
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "comfey_yveltal": {
+  "_line_note": "MILL/control: Comfey Flower Shower decks the opponent out behind Neutralization Zone (blanks attacks on non-Rule-Box Pokemon). Yveltal is NOT the win condition -- mis-tagging it `win` misled both the focus config and an energy edit. Real gap: the engine never plays disruption (Xerosic 929 offers/0 plays, Crushing Hammer 596/0, Acerola 118/0).",
+  "arch_mixin": true,
+  "archetype": "control",
+  "card_roles": {
+   "1086": "engine",
+   "1097": "engine",
+   "1120": "engine",
+   "1122": "engine",
+   "1152": "engine",
+   "1161": "tech",
+   "1182": "engine",
+   "1194": "engine",
+   "1197": "engine",
+   "1227": "engine",
+   "1228": "tech",
+   "1247": "engine",
+   "16": "fuel",
+   "164": "win",
+   "19": "fuel",
+   "343": "tech",
+   "5": "fuel",
+   "689": "tech"
+  },
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    216,
+    477
+   ],
+   "discard_fuel": [],
+   "focus": [
+    164,
+    343
+   ],
+   "need": {
+    "164": 1,
+    "343": 2
+   },
+   "stadiums": [
+    1247
+   ]
+  },
+  "residual_cards": [
+   1228
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "crustle": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "1": "fuel",
+   "1086": "engine",
+   "1087": "tech",
+   "11": "fuel",
+   "1122": "engine",
+   "1123": "engine",
+   "1147": "tech",
+   "1159": "tech",
+   "1182": "tech",
+   "1197": "engine",
+   "1225": "engine",
+   "1227": "engine",
+   "1264": "tech",
+   "14": "fuel",
+   "18": "fuel",
+   "343": "tech",
+   "344": "line",
+   "345": "engine",
+   "756": "win"
+  },
+  "disrupt_cards": [
+   1197
+  ],
+  "engine": "v2",
+  "hand_reset_cards": [
+   1087
+  ],
+  "heal_cards": [
+   1147
+  ],
+  "l2": "config",
+  "line": {
+   "big": [
+    477,
+    479,
+    1092
+   ],
+   "discard_fuel": [],
+   "focus": [
+    756,
+    345,
+    343
+   ],
+   "need": {
+    "343": 2,
+    "345": 3,
+    "756": 3
+   },
+   "stadiums": [
+    1264
+   ]
+  },
+  "live": {
+   "best_score": 584.2,
+   "last_submitted": "2026-07-15",
+   "submissions": 5
+  },
+  "promote_ready": true,
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "crustle_geco": {
+  "_note": "scouted from leaderboard #12 gecogeco 1095.6 (2026-07-19)",
+  "archetype": "control",
+  "bench_target": 4,
+  "card_roles": {
+   "1": "fuel",
+   "1086": "engine",
+   "1087": "tech",
+   "11": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1123": "tech",
+   "1147": "tech",
+   "1159": "tech",
+   "117": "tech",
+   "1187": "engine",
+   "1197": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1264": "tech",
+   "14": "engine",
+   "18": "engine",
+   "20": "engine",
+   "344": "line",
+   "345": "win",
+   "756": "win"
+  },
+  "disrupt_cards": [
+   1197
+  ],
+  "draw_supporters": [
+   1187
+  ],
+  "draw_threshold": 5,
+  "engine": "v2",
+  "hand_reset_cards": [
+   1087
+  ],
+  "heal_cards": [
+   1147
+  ],
+  "l2": "config",
+  "line": {
+   "bench_target": 4,
+   "big": [
+    1092,
+    479,
+    148
+   ],
+   "discard_fuel": [],
+   "focus": [
+    756,
+    345,
+    117
+   ],
+   "need": {
+    "117": 3,
+    "345": 3,
+    "756": 3
+   },
+   "stadiums": [
+    1264
+   ]
+  },
+  "main_attackers": [
+   756,
+   345,
+   117
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "crustle_stall": {
+  "arch_mixin": true,
+  "archetype": "control",
+  "card_roles": {
+   "1": "fuel",
+   "1086": "engine",
+   "112": "engine",
+   "1129": "tech",
+   "1147": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "117": "win",
+   "1177": "tech",
+   "1182": "tech",
+   "1197": "tech",
+   "1198": "engine",
+   "1210": "engine",
+   "1227": "engine",
+   "1264": "tech",
+   "16": "fuel",
+   "18": "fuel",
+   "344": "line",
+   "345": "win",
+   "414": "tech",
+   "6": "fuel",
+   "7": "fuel"
+  },
+  "deck_recover_cards": [
+   1129
+  ],
+  "disrupt_cards": [
+   1197
+  ],
+  "engine": "v2",
+  "heal_cards": [
+   1147
+  ],
+  "l2": "config",
+  "line": {
+   "big": [
+    148,
+    479
+   ],
+   "discard_fuel": [],
+   "focus": [
+    117,
+    345
+   ],
+   "need": {
+    "117": 3,
+    "345": 3
+   },
+   "stadiums": [
+    1264
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "live": {
+   "best_score": 664.7,
+   "last_submitted": "2026-07-12",
+   "submissions": 10
+  },
+  "search_items": [
+   1210
+  ],
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "cubchoo_control": {
+  "arch_mixin": true,
+  "archetype": "control",
+  "card_roles": {
+   "1081": "engine",
+   "1086": "engine",
+   "1091": "tech",
+   "1097": "engine",
+   "1102": "engine",
+   "1119": "engine",
+   "1120": "engine",
+   "1137": "tech",
+   "1152": "engine",
+   "1166": "engine",
+   "1182": "engine",
+   "1186": "tech",
+   "1197": "engine",
+   "1227": "engine",
+   "1247": "engine",
+   "1266": "tech",
+   "174": "tech",
+   "3": "fuel",
+   "506": "win",
+   "65": "line",
+   "66": "engine"
+  },
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "l2": "cubchoo_control",
+  "residual_cards": [
+   1137
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "cynthia_garchomp": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "10": "engine",
+   "1079": "engine",
+   "1086": "engine",
+   "1097": "tech",
+   "1122": "engine",
+   "1123": "tech",
+   "1141": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "1173": "tech",
+   "1182": "tech",
+   "1213": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "20": "fuel",
+   "341": "line",
+   "342": "engine",
+   "379": "line",
+   "380": "line",
+   "381": "win",
+   "387": "tech",
+   "6": "fuel"
+  },
+  "damage_boost_cards": {
+   "1141": 30
+  },
+  "engine": "v2",
+  "l2": "cynthia_garchomp",
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "doublade": {
+  "archetype": "combo",
+  "card_roles": {
+   "1065": "line",
+   "1066": "win",
+   "1067": "win",
+   "1079": "engine",
+   "1086": "engine",
+   "1097": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1198": "engine",
+   "1225": "engine",
+   "1227": "engine",
+   "13": "fuel",
+   "547": "engine",
+   "7": "fuel",
+   "8": "fuel"
+  },
+  "engine": "v2",
+  "l2": "doublade",
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "dragapult": {
+  "_migration_note": "NOT on ConfigL2: its `need` is a COUNT, and Phantom Dive (154) costs [2,5] = {R}+{P}, a two-TYPE cost. `need:{121:2}` is satisfied by any 2 energy, so the deck always had a payable Jet Headbutt (cost [0]) and led with it -- Phantom Dive 48.5% (legacy) -> 24.1% (config), i.e. the deck stopped being a spread deck. archetype='spread' -> SpreadPolicy restores it: Phantom Dive back in the lead (36.5%) and winrate 44.5 -> 51.2 at 150 games/opp. GAP: the line config has no vocabulary for typed needs.",
+  "archetype": "spread",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1080": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "112": "engine",
+   "1120": "tech",
+   "1121": "engine",
+   "1152": "engine",
+   "1182": "engine",
+   "119": "line",
+   "1198": "engine",
+   "120": "line",
+   "121": "win",
+   "1227": "engine",
+   "1240": "tech",
+   "1260": "tech",
+   "140": "engine",
+   "2": "fuel",
+   "235": "tech",
+   "305": "line",
+   "5": "fuel",
+   "66": "engine",
+   "7": "fuel"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "energy_accel": [
+   1240
+  ],
+  "engine": "v2",
+  "line": {
+   "big": [
+    152,
+    154,
+    183
+   ],
+   "discard_fuel": [],
+   "focus": [
+    121,
+    120,
+    140
+   ],
+   "need": {
+    "120": 2,
+    "121": 2,
+    "140": 3
+   },
+   "stadiums": [
+    1260
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "residual_cards": [
+   1120,
+   1240
+  ],
+  "status": "candidate",
+  "style": "spread",
+  "live": {
+   "last_submitted": "2026-07-28",
+   "submissions": 1,
+   "note": "2026-07-28 FIRST LM-path submission ever: rr_v37_dragapult.tar.gz, gte-reranker v37 (149M cross-encoder, glossary=none/remaining/shuffled DECK, INT8 vocab-pruned ONNX). Submitted to verify SPEED on real hardware, not strength -- self-play never measured the LM on this deck, and on the decks it did measure the LM is below engine_v2 live-weighted. Measured on the real tarball: bank max 154s/600s over 6 games, 89 decisions max, projection 204s. No engine_v2 dragapult submission exists, so there is no baseline to compare the rating against."
+  }
+ },
+ "dragapult_blaziken": {
+  "archetype": "spread",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1080": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "112": "engine",
+   "1121": "engine",
+   "1152": "engine",
+   "1182": "engine",
+   "119": "line",
+   "1198": "engine",
+   "120": "line",
+   "121": "win",
+   "1227": "engine",
+   "1231": "engine",
+   "1250": "engine",
+   "1256": "tech",
+   "140": "engine",
+   "2": "fuel",
+   "235": "tech",
+   "272": "win",
+   "31": "tech",
+   "326": "win",
+   "343": "tech",
+   "410": "line",
+   "411": "line",
+   "5": "fuel",
+   "7": "fuel"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 8,
+   "big": [
+    154,
+    371,
+    453
+   ],
+   "discard_fuel": [],
+   "focus": [
+    272,
+    121,
+    326
+   ],
+   "need": {
+    "121": 2,
+    "272": 2,
+    "326": 2
+   },
+   "stadiums": [
+    1250,
+    1256
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   },
+   "support_gate": "lenient"
+  },
+  "search_items": [
+   1231
+  ],
+  "status": "candidate",
+  "style": "spread"
+ },
+ "dragapult_dusknoir": {
+  "archetype": "spread",
+  "card_roles": {
+   "1071": "engine",
+   "1080": "engine",
+   "1086": "engine",
+   "1097": "tech",
+   "112": "engine",
+   "1120": "tech",
+   "1121": "engine",
+   "1152": "engine",
+   "1161": "tech",
+   "1182": "engine",
+   "119": "line",
+   "1198": "engine",
+   "120": "line",
+   "121": "win",
+   "1227": "engine",
+   "1231": "engine",
+   "1256": "tech",
+   "131": "line",
+   "132": "line",
+   "133": "win",
+   "140": "engine",
+   "2": "fuel",
+   "235": "tech",
+   "5": "fuel",
+   "7": "fuel"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    152,
+    154,
+    172
+   ],
+   "discard_fuel": [],
+   "focus": [
+    121,
+    133,
+    120
+   ],
+   "need": {
+    "120": 2,
+    "121": 2,
+    "133": 3
+   },
+   "stadiums": [
+    1256
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "search_items": [
+   1231
+  ],
+  "status": "candidate",
+  "style": "spread"
+ },
+ "ethan_hooh": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1088": "tech",
+   "1097": "engine",
+   "1118": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1198": "engine",
+   "1205": "engine",
+   "1215": "engine",
+   "1227": "engine",
+   "1256": "tech",
+   "140": "engine",
+   "184": "engine",
+   "2": "fuel",
+   "338": "tech",
+   "355": "line",
+   "356": "win",
+   "357": "win"
+  },
+  "engine": "v2",
+  "l2": "ethan_hooh",
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "flareon": {
+  "_line_note": "win-card-not-in-focus IS a real bug here, but fixing it measured FLAT at 750-1500 games -- reverted, see dead-config-audit memory",
+  "archetype": "toolbox",
+  "card_roles": {
+   "1": "fuel",
+   "108": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "1119": "tech",
+   "1121": "engine",
+   "1123": "tech",
+   "1127": "engine",
+   "1152": "engine",
+   "1165": "engine",
+   "1174": "tech",
+   "1182": "tech",
+   "1198": "engine",
+   "1205": "engine",
+   "1211": "tech",
+   "1227": "engine",
+   "1250": "tech",
+   "140": "engine",
+   "172": "line",
+   "173": "engine",
+   "174": "engine",
+   "184": "engine",
+   "2": "fuel",
+   "236": "tech",
+   "239": "win",
+   "249": "line",
+   "272": "tech",
+   "3": "fuel",
+   "317": "line",
+   "4": "fuel",
+   "5": "fuel",
+   "848": "line",
+   "849": "win"
+  },
+  "damage_boost_cards": {
+   "1211": 40
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 8,
+   "big": [
+    324,
+    329,
+    371
+   ],
+   "discard_fuel": [],
+   "focus": [
+    272,
+    239,
+    236
+   ],
+   "need": {
+    "236": 2,
+    "239": 3,
+    "272": 2
+   },
+   "stadiums": [
+    1250
+   ]
+  },
+  "residual_cards": [
+   1211
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "garchomp_lucario": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "1079": "engine",
+   "1086": "engine",
+   "1088": "tech",
+   "1097": "tech",
+   "1121": "engine",
+   "1122": "engine",
+   "1129": "tech",
+   "1139": "tech",
+   "1141": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "117": "tech",
+   "1173": "tech",
+   "1174": "tech",
+   "1182": "tech",
+   "1203": "engine",
+   "1227": "engine",
+   "20": "fuel",
+   "341": "line",
+   "342": "engine",
+   "379": "line",
+   "380": "line",
+   "381": "win",
+   "387": "tech",
+   "6": "fuel",
+   "677": "line",
+   "678": "win"
+  },
+  "damage_boost_cards": {
+   "1141": 30
+  },
+  "deck_recover_cards": [
+   1129
+  ],
+  "draw_supporters": [
+   1203
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    148,
+    532,
+    983
+   ],
+   "discard_fuel": [],
+   "focus": [
+    381,
+    678,
+    117
+   ],
+   "need": {
+    "117": 3,
+    "381": 2,
+    "678": 2
+   },
+   "stadiums": []
+  },
+  "main_attackers": [
+   678,
+   381
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "hop_zacian": {
+  "_line_note": "win Zacian ex last in focus at need=1; big forced self-damaging Dynamic Press",
+  "archetype": "aggro",
+  "card_roles": {
+   "1092": "engine",
+   "1097": "tech",
+   "11": "fuel",
+   "1115": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1123": "tech",
+   "1152": "engine",
+   "1171": "engine",
+   "1182": "tech",
+   "1213": "engine",
+   "1219": "engine",
+   "1227": "engine",
+   "1255": "engine",
+   "140": "engine",
+   "299": "win",
+   "304": "engine",
+   "309": "tech",
+   "310": "tech",
+   "311": "tech",
+   "626": "tech",
+   "8": "fuel",
+   "878": "line",
+   "879": "tech"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    413,
+    433,
+    412
+   ],
+   "discard_fuel": [],
+   "focus": [
+    299,
+    311
+   ],
+   "need": {
+    "299": 4,
+    "311": 1
+   },
+   "stadiums": [
+    1255
+   ]
+  },
+  "main_attackers": [
+   299
+  ],
+  "search_items": [
+   1092,
+   1115
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "hydrapple": {
+  "archetype": "combo",
+  "card_roles": {
+   "1": "fuel",
+   "1071": "engine",
+   "1080": "engine",
+   "1094": "engine",
+   "1097": "tech",
+   "1121": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1184": "tech",
+   "1201": "engine",
+   "1227": "engine",
+   "1231": "engine",
+   "1261": "engine",
+   "140": "engine",
+   "150": "win",
+   "172": "tech",
+   "173": "tech",
+   "655": "engine",
+   "708": "line",
+   "709": "line",
+   "710": "engine",
+   "917": "line",
+   "918": "line",
+   "92": "line",
+   "920": "tech",
+   "93": "line",
+   "96": "win"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "engine": "v2",
+  "l2": "hydrapple",
+  "main_attackers": [
+   96,
+   150
+  ],
+  "search_items": [
+   1231
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "hydreigon": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "10": "engine",
+   "1079": "engine",
+   "1086": "engine",
+   "112": "tech",
+   "1121": "engine",
+   "1139": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1231": "engine",
+   "1260": "tech",
+   "140": "tech",
+   "141": "tech",
+   "227": "line",
+   "228": "line",
+   "229": "win",
+   "5": "fuel",
+   "7": "fuel",
+   "8": "fuel",
+   "827": "line",
+   "828": "win",
+   "833": "line",
+   "834": "engine"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    184,
+    313,
+    1192
+   ],
+   "discard_fuel": [],
+   "focus": [
+    229,
+    141,
+    828
+   ],
+   "need": {
+    "141": 2,
+    "229": 2,
+    "828": 1
+   },
+   "stadiums": [
+    1260
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "residual_cards": [
+   1231
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "iono_bellibolt": {
+  "_line_note": "Bellowing Thunder costs LIGHTNING+FIGHTING and Electric Streamer attaches only Basic {L} to IONO'S Pokemon -- so the engine cannot fuel the primary attacker at all (wrong type AND wrong target). Raging Bolt depends on the 1/turn manual attach with 3 Basic {F} in 60. A bespoke L2 was written and REFUTED; see archetype-policy-never-ran / the iono entry in the weak-deck memo.",
+  "archetype": "ramp",
+  "card_roles": {
+   "1086": "engine",
+   "1088": "tech",
+   "1097": "tech",
+   "1116": "tech",
+   "1118": "engine",
+   "1119": "tech",
+   "1121": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1227": "engine",
+   "1233": "engine",
+   "1254": "engine",
+   "235": "tech",
+   "265": "tech",
+   "268": "line",
+   "269": "win",
+   "270": "line",
+   "271": "engine",
+   "343": "tech",
+   "4": "fuel",
+   "6": "fuel",
+   "63": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    72,
+    363,
+    368
+   ],
+   "discard_fuel": [],
+   "focus": [
+    63,
+    269,
+    265
+   ],
+   "need": {
+    "265": 2,
+    "269": 4,
+    "63": 2
+   },
+   "stadiums": [
+    1254
+   ]
+  },
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "lillies_clefairy": {
+  "archetype": "toolbox",
+  "card_roles": {
+   "1071": "engine",
+   "108": "win",
+   "1088": "tech",
+   "1102": "engine",
+   "1121": "engine",
+   "1146": "engine",
+   "1172": "tech",
+   "1182": "tech",
+   "1188": "engine",
+   "1198": "engine",
+   "1205": "engine",
+   "1250": "engine",
+   "140": "tech",
+   "184": "engine",
+   "19": "fuel",
+   "2": "fuel",
+   "209": "tech",
+   "272": "win",
+   "3": "fuel",
+   "5": "fuel",
+   "6": "fuel",
+   "756": "win",
+   "791": "tech",
+   "979": "tech"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 8,
+   "big": [
+    136,
+    371,
+    1092
+   ],
+   "discard_fuel": [
+    5
+   ],
+   "focus": [
+    272,
+    756,
+    108
+   ],
+   "need": {
+    "108": 3,
+    "272": 2,
+    "756": 3
+   },
+   "stadiums": [
+    1250
+   ]
+  },
+  "search_items": [
+   1188
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mamoswine": {
+  "archetype": "combo",
+  "card_roles": {
+   "1079": "engine",
+   "1086": "engine",
+   "109": "line",
+   "1097": "tech",
+   "1121": "engine",
+   "1123": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1188": "engine",
+   "1198": "engine",
+   "12": "fuel",
+   "1225": "engine",
+   "1227": "engine",
+   "1264": "tech",
+   "140": "tech",
+   "167": "tech",
+   "2": "fuel",
+   "20": "fuel",
+   "281": "line",
+   "282": "line",
+   "283": "win",
+   "326": "engine",
+   "410": "line",
+   "411": "line",
+   "5": "fuel",
+   "6": "fuel",
+   "741": "line",
+   "742": "line",
+   "743": "engine"
+  },
+  "engine": "v2",
+  "l2": "mamoswine",
+  "main_attackers": [
+   283
+  ],
+  "roles": {
+   "283": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1188
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "manectric": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1071": "tech",
+   "1086": "engine",
+   "1093": "tech",
+   "1097": "tech",
+   "1119": "tech",
+   "1121": "engine",
+   "1123": "tech",
+   "1152": "engine",
+   "1174": "tech",
+   "1182": "tech",
+   "1203": "tech",
+   "1213": "tech",
+   "1219": "engine",
+   "1227": "engine",
+   "1239": "engine",
+   "1264": "tech",
+   "140": "tech",
+   "235": "tech",
+   "272": "tech",
+   "343": "tech",
+   "377": "tech",
+   "4": "fuel",
+   "5": "fuel",
+   "511": "line",
+   "512": "engine",
+   "736": "line",
+   "737": "win",
+   "868": "win",
+   "946": "tech"
+  },
+  "draw_supporters": [
+   1203,
+   1239
+  ],
+  "engine": "v2",
+  "l2": "manectric",
+  "save_cards": [
+   1093
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "marnie_grimmsnarl": {
+  "archetype": "spread",
+  "card_roles": {
+   "103": "line",
+   "104": "engine",
+   "1079": "engine",
+   "1080": "tech",
+   "1086": "engine",
+   "1097": "tech",
+   "112": "engine",
+   "1122": "engine",
+   "1152": "engine",
+   "1174": "tech",
+   "1182": "tech",
+   "1219": "engine",
+   "122": "engine",
+   "1227": "engine",
+   "1259": "engine",
+   "235": "tech",
+   "646": "line",
+   "647": "line",
+   "648": "win",
+   "689": "tech",
+   "7": "fuel"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "engine": "v2",
+  "l2": "marnie_grimmsnarl",
+  "live": {
+   "best_score": 575.2,
+   "last_submitted": "2026-07-11",
+   "submissions": 4
+  },
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "mega_abomasnow_sample": {
+  "_migration_note": "engine_v2+ConfigL2 costs ~6pt of self-play vs the old policies.mega_abomasnow (59.0 -> 52.7 at 150 games/opp; lead attack Hammer-lanche 74% -> 39%). ACCEPTED: this deck is `candidate` with no live score, and self-play carries +-8pt anyway, so the alternative -- keeping _engine.py+policies.py alive for one never-submitted deck -- preserves the two-engine trap that caused a whole session of wrong measurements. big=[1046] (win-condition scaling attack only) recovered +2.9 of the 9.2; p05's derived big=[1042,1045,1046] let Kyogre's Riptide take the lead.",
+  "archetype": "ramp",
+  "card_roles": {
+   "1145": "engine",
+   "1158": "tech",
+   "1205": "engine",
+   "1227": "engine",
+   "1235": "engine",
+   "3": "fuel",
+   "721": "tech",
+   "722": "line",
+   "723": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    1046
+   ],
+   "discard_fuel": [],
+   "focus": [
+    723,
+    721,
+    722
+   ],
+   "need": {
+    "721": 1,
+    "722": 2,
+    "723": 2
+   },
+   "stadiums": []
+  },
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_absol": {
+  "archetype": "spread",
+  "card_roles": {
+   "1086": "engine",
+   "1092": "engine",
+   "1097": "tech",
+   "1116": "tech",
+   "112": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1134": "engine",
+   "1139": "tech",
+   "1152": "engine",
+   "1174": "tech",
+   "1182": "tech",
+   "1219": "engine",
+   "1227": "engine",
+   "1256": "tech",
+   "1257": "tech",
+   "140": "engine",
+   "141": "engine",
+   "230": "engine",
+   "343": "tech",
+   "687": "win",
+   "7": "fuel",
+   "833": "line",
+   "834": "engine"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    184,
+    994,
+    1203
+   ],
+   "combo": {
+    "finisher": 687,
+    "finisher_attack": 994,
+    "n": 6,
+    "type": "exact_counters"
+   },
+   "discard_fuel": [],
+   "focus": [
+    687,
+    141,
+    834
+   ],
+   "need": {
+    "141": 2,
+    "687": 2,
+    "834": 3
+   },
+   "stadiums": [
+    1256,
+    1257
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_gate": "lenient"
+  },
+  "search_items": [
+   1134,
+   1092
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_diancie": {
+  "archetype": "spread",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1092": "engine",
+   "1097": "tech",
+   "1119": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1123": "tech",
+   "1145": "engine",
+   "1146": "engine",
+   "1152": "engine",
+   "1163": "engine",
+   "1182": "tech",
+   "1219": "engine",
+   "1227": "engine",
+   "1263": "engine",
+   "131": "line",
+   "132": "line",
+   "133": "engine",
+   "184": "win",
+   "19": "fuel",
+   "214": "engine",
+   "272": "tech",
+   "5": "fuel",
+   "766": "win",
+   "959": "line"
+  },
+  "draw_supporters": [
+   1263
+  ],
+  "energy_accel": [
+   1163
+  ],
+  "engine": "v2",
+  "l2": "mega_diancie",
+  "main_attackers": [
+   766
+  ],
+  "roles": {
+   "766": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1092,
+   1145
+  ],
+  "status": "candidate",
+  "style": "spread"
+ },
+ "mega_dragonite": {
+  "_line_note": "win-card-not-in-focus IS a real bug here, but fixing it measured FLAT at 750-1500 games -- reverted, see dead-config-audit memory",
+  "archetype": "toolbox",
+  "card_roles": {
+   "1": "fuel",
+   "1071": "engine",
+   "108": "win",
+   "1097": "tech",
+   "1098": "tech",
+   "1119": "tech",
+   "1121": "engine",
+   "1122": "engine",
+   "1126": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1191": "tech",
+   "1198": "engine",
+   "1219": "engine",
+   "1227": "engine",
+   "124": "line",
+   "125": "win",
+   "1250": "tech",
+   "126": "tech",
+   "1264": "tech",
+   "140": "engine",
+   "160": "engine",
+   "176": "win",
+   "184": "tech",
+   "3": "fuel",
+   "4": "fuel",
+   "756": "win",
+   "902": "line",
+   "903": "line",
+   "904": "win"
+  },
+  "energy_accel": [
+   1098
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 8,
+   "big": [
+    136,
+    1092,
+    1302
+   ],
+   "discard_fuel": [],
+   "focus": [
+    756,
+    904,
+    108
+   ],
+   "need": {
+    "108": 3,
+    "756": 3,
+    "904": 3
+   },
+   "stadiums": [
+    1250,
+    1264
+   ]
+  },
+  "main_attackers": [
+   756,
+   176,
+   108,
+   904
+  ],
+  "status": "candidate",
+  "style": "evolve",
+  "switch_cards": [
+   1191
+  ]
+ },
+ "mega_feraligatr": {
+  "_line_unused_note": "MegaFeraligatrL2 extends BeatdownPolicy, not ConfigL2, so it does NOT read the line config below; p05_deckconfig can regenerate it if this ever goes back to config",
+  "archetype": "beatdown",
+  "card_roles": {
+   "10": "engine",
+   "1071": "engine",
+   "1079": "engine",
+   "1086": "engine",
+   "112": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1129": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1198": "engine",
+   "1219": "engine",
+   "1225": "engine",
+   "1227": "engine",
+   "1237": "tech",
+   "1240": "engine",
+   "1262": "tech",
+   "235": "tech",
+   "3": "fuel",
+   "305": "line",
+   "343": "tech",
+   "47": "line",
+   "48": "line",
+   "49": "win",
+   "66": "engine",
+   "7": "fuel",
+   "939": "win"
+  },
+  "deck_recover_cards": [
+   1129
+  ],
+  "draw_supporters": [
+   1237
+  ],
+  "energy_accel": [
+   1240
+  ],
+  "engine": "v2",
+  "l2": "mega_feraligatr",
+  "line": {
+   "big": [
+    48,
+    76,
+    1347
+   ],
+   "discard_fuel": [],
+   "focus": [
+    49,
+    939,
+    66
+   ],
+   "need": {
+    "49": 2,
+    "66": 3,
+    "939": 3
+   },
+   "predamage": true,
+   "stadiums": [
+    1262
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_froslass": {
+  "archetype": "spread",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1086": "engine",
+   "1097": "tech",
+   "1121": "engine",
+   "1123": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1194": "engine",
+   "1225": "engine",
+   "1227": "engine",
+   "1246": "tech",
+   "1249": "engine",
+   "131": "line",
+   "132": "line",
+   "133": "engine",
+   "140": "engine",
+   "17": "fuel",
+   "184": "tech",
+   "235": "tech",
+   "3": "fuel",
+   "33": "line",
+   "34": "line",
+   "40": "win",
+   "860": "line",
+   "861": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    33,
+    183,
+    1240
+   ],
+   "discard_fuel": [],
+   "focus": [
+    40,
+    861,
+    140
+   ],
+   "need": {
+    "140": 3,
+    "40": 1,
+    "861": 1
+   },
+   "stadiums": [
+    1246,
+    1249
+   ]
+  },
+  "main_attackers": [
+   40
+  ],
+  "roles": {
+   "40": {
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_gardevoir": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1092": "engine",
+   "1097": "tech",
+   "112": "tech",
+   "1121": "engine",
+   "1146": "engine",
+   "1152": "engine",
+   "117": "tech",
+   "1172": "tech",
+   "1182": "tech",
+   "1194": "engine",
+   "1219": "engine",
+   "1225": "engine",
+   "1227": "engine",
+   "1241": "tech",
+   "1263": "engine",
+   "140": "engine",
+   "16": "fuel",
+   "183": "engine",
+   "184": "win",
+   "19": "fuel",
+   "272": "tech",
+   "5": "fuel",
+   "745": "line",
+   "746": "line",
+   "747": "win",
+   "751": "engine"
+  },
+  "draw_supporters": [
+   1263
+  ],
+  "engine": "v2",
+  "l2": "mega_gardevoir",
+  "search_items": [
+   1092
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_gengar": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1080": "engine",
+   "1086": "engine",
+   "1097": "engine",
+   "112": "engine",
+   "1121": "engine",
+   "1152": "engine",
+   "1163": "tech",
+   "1174": "tech",
+   "1182": "engine",
+   "1195": "engine",
+   "1219": "engine",
+   "1227": "engine",
+   "1231": "engine",
+   "1256": "tech",
+   "1259": "engine",
+   "140": "engine",
+   "141": "engine",
+   "235": "tech",
+   "646": "line",
+   "647": "line",
+   "648": "win",
+   "689": "tech",
+   "7": "fuel",
+   "770": "line",
+   "771": "line",
+   "772": "win"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "energy_accel": [
+   1163
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    184,
+    937,
+    1117
+   ],
+   "discard_fuel": [],
+   "focus": [
+    772,
+    648,
+    141
+   ],
+   "need": {
+    "141": 2,
+    "648": 2,
+    "772": 2
+   },
+   "stadiums": [
+    1259,
+    1256
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "search_items": [
+   1231
+  ],
+  "status": "candidate",
+  "style": "spread"
+ },
+ "mega_heracross": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1": "fuel",
+   "1086": "tech",
+   "1097": "engine",
+   "1119": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1125": "engine",
+   "1152": "tech",
+   "1182": "tech",
+   "1205": "engine",
+   "1210": "engine",
+   "1227": "engine",
+   "1231": "engine",
+   "140": "engine",
+   "305": "tech",
+   "781": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    183,
+    424,
+    1131
+   ],
+   "discard_fuel": [],
+   "focus": [
+    781,
+    140,
+    305
+   ],
+   "need": {
+    "140": 3,
+    "305": 2,
+    "781": 3
+   },
+   "stadiums": []
+  },
+  "search_items": [
+   1210,
+   1231
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "mega_latias": {
+  "archetype": "toolbox",
+  "card_roles": {
+   "1071": "engine",
+   "1079": "engine",
+   "1080": "engine",
+   "1086": "engine",
+   "1097": "engine",
+   "1121": "engine",
+   "1152": "engine",
+   "1182": "tech",
+   "1198": "engine",
+   "1205": "engine",
+   "1210": "engine",
+   "1227": "engine",
+   "1264": "tech",
+   "140": "engine",
+   "184": "win",
+   "2": "fuel",
+   "272": "tech",
+   "326": "engine",
+   "410": "line",
+   "411": "line",
+   "412": "tech",
+   "5": "fuel",
+   "754": "win",
+   "756": "win",
+   "858": "tech"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "engine": "v2",
+  "l2": "mega_latias",
+  "search_items": [
+   1210
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_lopunny": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1086": "engine",
+   "1088": "engine",
+   "1097": "engine",
+   "1121": "engine",
+   "1123": "engine",
+   "1152": "engine",
+   "1157": "engine",
+   "1182": "tech",
+   "1185": "engine",
+   "1198": "tech",
+   "1205": "engine",
+   "1227": "engine",
+   "140": "engine",
+   "235": "tech",
+   "65": "line",
+   "66": "engine",
+   "7": "fuel",
+   "848": "line",
+   "849": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    76,
+    183,
+    1226
+   ],
+   "discard_fuel": [],
+   "focus": [
+    849,
+    66,
+    140
+   ],
+   "need": {
+    "140": 3,
+    "66": 3,
+    "849": 2
+   },
+   "stadiums": []
+  },
+  "main_attackers": [
+   849
+  ],
+  "search_items": [
+   1185
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "mega_lucario": {
+  "archetype": "aggro",
+  "engine": "v2",
+  "l2": "mega_lucario",
+  "live": {
+   "best_score": 699.7,
+   "last_submitted": "2026-07-17",
+   "submissions": 11
+  },
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "mega_lucario_ctrl": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1102": "engine",
+   "1121": "engine",
+   "1123": "tech",
+   "1141": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1192": "engine",
+   "1197": "tech",
+   "1227": "engine",
+   "1229": "tech",
+   "1252": "tech",
+   "20": "fuel",
+   "6": "fuel",
+   "677": "line",
+   "678": "win"
+  },
+  "disrupt_cards": [
+   1197
+  ],
+  "engine": "v2",
+  "l2": "mega_lucario",
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_lucario_hg": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1102": "engine",
+   "1121": "engine",
+   "1123": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1192": "engine",
+   "1197": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1229": "tech",
+   "1252": "tech",
+   "20": "fuel",
+   "6": "fuel",
+   "677": "line",
+   "678": "win"
+  },
+  "engine": "v2",
+  "l2": "mega_lucario",
+  "live": {
+   "best_score": 552.4,
+   "last_submitted": "2026-07-16",
+   "submissions": 1
+  },
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "mega_lucario_hilda": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1102": "engine",
+   "1121": "engine",
+   "1123": "tech",
+   "1141": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1192": "engine",
+   "1197": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1229": "tech",
+   "1252": "tech",
+   "20": "fuel",
+   "6": "fuel",
+   "677": "line",
+   "678": "win"
+  },
+  "engine": "v2",
+  "l2": "mega_lucario",
+  "live": {
+   "best_score": 542.9,
+   "last_submitted": "2026-07-15",
+   "submissions": 1
+  },
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "submitted",
+  "style": "evolve"
+ },
+ "mega_lucario_lb2": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1097": "engine",
+   "1102": "engine",
+   "1121": "engine",
+   "1123": "tech",
+   "1141": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1192": "engine",
+   "1197": "tech",
+   "1227": "engine",
+   "1229": "tech",
+   "1252": "tech",
+   "20": "fuel",
+   "6": "fuel",
+   "677": "line",
+   "678": "win"
+  },
+  "engine": "v2",
+  "l2": "mega_lucario",
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_lucario_tr": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1087": "tech",
+   "1102": "engine",
+   "1123": "tech",
+   "1141": "tech",
+   "1142": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1213": "engine",
+   "1227": "engine",
+   "6": "fuel",
+   "673": "line",
+   "674": "engine",
+   "675": "engine",
+   "676": "engine",
+   "677": "line",
+   "678": "win"
+  },
+  "engine": "v2",
+  "hand_reset_cards": [
+   1087
+  ],
+  "l2": "mega_lucario_tr",
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_starmie": {
+  "archetype": "spread",
+  "card_roles": {
+   "1031": "win",
+   "861": "win",
+   "1030": "line",
+   "860": "line",
+   "664": "line",
+   "665": "line",
+   "666": "tech",
+   "117": "tech",
+   "414": "tech",
+   "1086": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1145": "engine",
+   "1225": "engine",
+   "1227": "engine",
+   "1229": "engine",
+   "1189": "engine",
+   "1224": "engine",
+   "1182": "tech",
+   "1197": "tech",
+   "1262": "tech",
+   "1159": "tech",
+   "3": "fuel",
+   "6": "fuel"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    664,
+    665
+   ],
+   "discard_fuel": [],
+   "focus": [
+    1031,
+    861
+   ],
+   "need": {
+    "1031": 2,
+    "861": 2,
+    "1030": 2,
+    "860": 2
+   },
+   "stadiums": [
+    1262
+   ],
+   "support_energy": {
+    "1031": 1,
+    "861": 1
+   },
+   "support_etype": {
+    "1031": 3,
+    "861": 3
+   }
+  },
+  "status": "candidate",
+  "style": "spread",
+  "search_items": [
+   1121,
+   1122,
+   1086,
+   1145,
+   1189
+  ],
+  "draw_supporters": [
+   1224
+  ]
+ },
+ "mega_venusaur": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1": "fuel",
+   "1094": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1213": "engine",
+   "1227": "engine",
+   "1229": "tech",
+   "1261": "engine",
+   "650": "line",
+   "651": "line",
+   "652": "win",
+   "920": "tech",
+   "96": "engine"
+  },
+  "engine": "v2",
+  "l2": "mega_venusaur",
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "mega_zygarde": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1051": "line",
+   "1052": "engine",
+   "1056": "win",
+   "1097": "engine",
+   "1121": "engine",
+   "1123": "tech",
+   "1126": "engine",
+   "1142": "engine",
+   "1152": "engine",
+   "1174": "tech",
+   "1182": "tech",
+   "1192": "engine",
+   "1227": "engine",
+   "1229": "tech",
+   "1238": "engine",
+   "20": "fuel",
+   "6": "fuel",
+   "675": "engine",
+   "676": "engine"
+  },
+  "engine": "v2",
+  "l2": "mega_zygarde",
+  "mega_heal_cards": [
+   1229
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "metagross": {
+  "archetype": "combo",
+  "card_roles": {
+   "1064": "tech",
+   "1071": "engine",
+   "1079": "engine",
+   "1086": "engine",
+   "1097": "tech",
+   "1121": "engine",
+   "1123": "tech",
+   "1139": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1191": "tech",
+   "1210": "engine",
+   "1219": "engine",
+   "1227": "engine",
+   "1264": "tech",
+   "184": "tech",
+   "272": "tech",
+   "5": "fuel",
+   "547": "engine",
+   "639": "line",
+   "640": "line",
+   "641": "win",
+   "695": "tech",
+   "696": "tech",
+   "8": "fuel",
+   "804": "line",
+   "835": "tech"
+  },
+  "engine": "v2",
+  "l2": "metagross",
+  "main_attackers": [
+   641
+  ],
+  "roles": {
+   "641": {
+    "payoff": true,
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "search_items": [
+   1210
+  ],
+  "status": "candidate",
+  "style": "evolve",
+  "switch_cards": [
+   1191
+  ]
+ },
+ "ns_zoroark": {
+  "archetype": "beatdown",
+  "card_roles": {
+   "1086": "engine",
+   "1088": "tech",
+   "1097": "engine",
+   "1113": "engine",
+   "112": "tech",
+   "1120": "tech",
+   "1121": "engine",
+   "1122": "engine",
+   "1123": "tech",
+   "1152": "engine",
+   "1182": "tech",
+   "1205": "engine",
+   "1221": "engine",
+   "1227": "engine",
+   "1253": "engine",
+   "235": "tech",
+   "292": "line",
+   "293": "win",
+   "303": "tech",
+   "7": "fuel",
+   "906": "engine"
+  },
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "l2": "ns_zoroark",
+  "live": {
+   "best_score": 454.8,
+   "last_submitted": "2026-07-12",
+   "submissions": 1
+  },
+  "main_attackers": [
+   293
+  ],
+  "roles": {
+   "293": {
+    "role": "attacker",
+    "tier": "primary"
+   }
+  },
+  "status": "submitted",
+  "style": "aggro"
+ },
+ "ogerpon_box": {
+  "_line_note": "win-card-not-in-focus IS a real bug here, but fixing it measured FLAT at 750-1500 games -- reverted, see dead-config-audit memory",
+  "archetype": "toolbox",
+  "card_roles": {
+   "1": "fuel",
+   "1071": "engine",
+   "108": "tech",
+   "1097": "engine",
+   "1116": "engine",
+   "112": "engine",
+   "1121": "engine",
+   "1159": "tech",
+   "1182": "tech",
+   "1188": "engine",
+   "1198": "engine",
+   "1205": "engine",
+   "1210": "engine",
+   "1227": "engine",
+   "1250": "engine",
+   "140": "engine",
+   "141": "tech",
+   "16": "fuel",
+   "184": "win",
+   "2": "fuel",
+   "209": "tech",
+   "272": "win",
+   "3": "fuel",
+   "5": "fuel",
+   "6": "fuel",
+   "689": "tech",
+   "7": "fuel",
+   "756": "win",
+   "791": "tech",
+   "96": "engine",
+   "979": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 8,
+   "big": [
+    184,
+    371,
+    1092
+   ],
+   "discard_fuel": [],
+   "focus": [
+    756,
+    272,
+    141
+   ],
+   "need": {
+    "141": 2,
+    "272": 2,
+    "756": 3
+   },
+   "stadiums": [
+    1250
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "search_items": [
+   1210,
+   1188
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "okidogi_box": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1051": "line",
+   "1052": "engine",
+   "1097": "engine",
+   "1142": "engine",
+   "1152": "engine",
+   "116": "win",
+   "1174": "tech",
+   "1182": "tech",
+   "1194": "engine",
+   "1197": "tech",
+   "1213": "tech",
+   "1227": "engine",
+   "1238": "engine",
+   "1247": "engine",
+   "1264": "tech",
+   "135": "win",
+   "16": "engine",
+   "6": "fuel",
+   "675": "engine",
+   "676": "engine"
+  },
+  "disrupt_cards": [
+   1197
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    147,
+    175,
+    980
+   ],
+   "discard_fuel": [],
+   "focus": [
+    135,
+    676,
+    116
+   ],
+   "need": {
+    "116": 2,
+    "135": 3,
+    "676": 1
+   },
+   "stadiums": [
+    1264,
+    1247
+   ]
+  },
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "omatsuri": {
+  "archetype": "spread",
+  "card_roles": {
+   "1": "fuel",
+   "100": "line",
+   "1080": "engine",
+   "1086": "engine",
+   "1094": "engine",
+   "1129": "tech",
+   "1152": "engine",
+   "1174": "tech",
+   "1175": "tech",
+   "1182": "tech",
+   "1183": "engine",
+   "1184": "tech",
+   "1191": "tech",
+   "1211": "tech",
+   "1213": "tech",
+   "1227": "engine",
+   "1245": "engine",
+   "1261": "tech",
+   "18": "fuel",
+   "240": "engine",
+   "343": "tech",
+   "42": "line",
+   "73": "line",
+   "74": "engine",
+   "858": "tech",
+   "89": "line",
+   "90": "engine",
+   "92": "line",
+   "93": "win"
+  },
+  "deck_recover_cards": [
+   1129
+  ],
+  "engine": "v2",
+  "l2": "omatsuri",
+  "residual_cards": [
+   1080,
+   1183,
+   1191,
+   1211
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "raging_bolt": {
+  "archetype": "toolbox",
+  "card_roles": {
+   "1": "fuel",
+   "1071": "engine",
+   "108": "tech",
+   "1080": "engine",
+   "1097": "engine",
+   "1098": "engine",
+   "1116": "engine",
+   "1121": "engine",
+   "1182": "tech",
+   "1188": "engine",
+   "1198": "engine",
+   "1205": "engine",
+   "1227": "engine",
+   "1250": "engine",
+   "140": "engine",
+   "184": "engine",
+   "209": "tech",
+   "272": "win",
+   "3": "fuel",
+   "4": "fuel",
+   "5": "fuel",
+   "6": "fuel",
+   "63": "win",
+   "75": "tech",
+   "756": "win",
+   "96": "engine",
+   "978": "tech"
+  },
+  "draw_supporters": [
+   1080
+  ],
+  "energy_accel": [
+   1098
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 8,
+   "big": [
+    72,
+    371,
+    1092
+   ],
+   "discard_fuel": [],
+   "focus": [
+    756,
+    272,
+    63
+   ],
+   "need": {
+    "272": 2,
+    "63": 2,
+    "756": 3
+   },
+   "stadiums": [
+    1250
+   ]
+  },
+  "search_items": [
+   1188
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "rockets_honchkrow": {
+  "_note": "keyword buckets keyed by cardId -- 'Team Rocket's X' names carry no function keyword, so Transceiver/Proton/Giovanni/Archer were offered thousands of times and played 0 (tools/deck_bottleneck.py, 2026-07-21)",
+  "archetype": "aggro",
+  "bench_target": 4,
+  "card_roles": {
+   "1097": "engine",
+   "1109": "engine",
+   "1121": "engine",
+   "1134": "engine",
+   "1152": "engine",
+   "1216": "engine",
+   "1217": "engine",
+   "1218": "engine",
+   "1219": "engine",
+   "1220": "engine",
+   "1257": "engine",
+   "15": "fuel",
+   "17": "fuel",
+   "414": "tech",
+   "463": "line",
+   "473": "line",
+   "474": "win",
+   "891": "win",
+   "1077": "engine"
+  },
+  "draw_supporters": [
+   1216,
+   1217,
+   1219,
+   1220
+  ],
+  "draw_threshold": 5,
+  "engine": "v2",
+  "gust_cards": [
+   1218
+  ],
+  "l2": "config",
+  "line": {
+   "bench_target": 4,
+   "big": [
+    891
+   ],
+   "discard_fuel": [],
+   "focus": [
+    891,
+    463,
+    474,
+    473
+   ],
+   "need": {
+    "463": 4,
+    "473": 2,
+    "474": 2,
+    "891": 3
+   },
+   "stadiums": [
+    1257
+   ]
+  },
+  "main_attackers": [
+   891,
+   474
+  ],
+  "search_items": [
+   1134,
+   1077
+  ],
+  "status": "candidate",
+  "style": "evolve",
+  "switch_cards": [
+   1218
+  ]
+ },
+ "rockets_mewtwo": {
+  "_note": "keyword buckets keyed by cardId -- 'Team Rocket's X' names carry no function keyword, so Transceiver/Proton/Giovanni/Archer were offered thousands of times and played 0 (tools/deck_bottleneck.py, 2026-07-21)",
+  "archetype": "combo",
+  "card_roles": {
+   "1": "fuel",
+   "1094": "engine",
+   "1097": "engine",
+   "1116": "tech",
+   "1121": "engine",
+   "1134": "engine",
+   "1158": "tech",
+   "1175": "tech",
+   "1216": "engine",
+   "1217": "engine",
+   "1218": "tech",
+   "1219": "engine",
+   "1220": "engine",
+   "1227": "engine",
+   "1257": "engine",
+   "15": "engine",
+   "272": "tech",
+   "400": "line",
+   "401": "engine",
+   "414": "engine",
+   "431": "win",
+   "434": "tech",
+   "464": "tech"
+  },
+  "draw_supporters": [
+   1216,
+   1217,
+   1219,
+   1220
+  ],
+  "engine": "v2",
+  "gust_cards": [
+   1218
+  ],
+  "l2": "rockets_mewtwo",
+  "main_attackers": [
+   431
+  ],
+  "search_items": [
+   1134
+  ],
+  "status": "candidate",
+  "style": "aggro",
+  "switch_cards": [
+   1218
+  ]
+ },
+ "rockets_spidops": {
+  "_note": "scouted from leaderboard #3 THIRD PTCG Club 1191.9 (2026-07-19); buckets keyed by cardId (names don't match)",
+  "archetype": "combo",
+  "bench_target": 5,
+  "card_roles": {
+   "1": "fuel",
+   "1094": "engine",
+   "1097": "engine",
+   "1119": "engine",
+   "1134": "engine",
+   "1152": "engine",
+   "1159": "tech",
+   "1175": "tech",
+   "1216": "engine",
+   "1217": "tech",
+   "1218": "engine",
+   "1219": "engine",
+   "1220": "engine",
+   "1227": "engine",
+   "1257": "tech",
+   "15": "engine",
+   "400": "engine",
+   "401": "engine",
+   "414": "line",
+   "431": "win",
+   "432": "line",
+   "463": "engine",
+   "5": "fuel"
+  },
+  "draw_supporters": [
+   1216,
+   1220,
+   1219,
+   1217
+  ],
+  "draw_threshold": 4,
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "bench_target": 5,
+   "big": [
+    608,
+    560
+   ],
+   "discard_fuel": [],
+   "focus": [
+    431,
+    401,
+    414
+   ],
+   "need": {
+    "401": 2,
+    "414": 3,
+    "431": 3
+   },
+   "stadiums": [
+    1257
+   ]
+  },
+  "main_attackers": [
+   431,
+   401
+  ],
+  "search_items": [
+   1134
+  ],
+  "status": "candidate",
+  "style": "aggro",
+  "switch_cards": [
+   1218
+  ]
+ },
+ "slowking": {
+  "_line_note": "Kyurem(144)/Metagross(276)/Zeraora(377) are AMMO for Slowking's Seek Inspiration (fires their attacks for {P}{C}); Metagross intentionally has no Metang/Rare Candy. Do NOT remove them as 'unplayable'. Energy 11->15 (+5.6pt) came from Ciphermaniac's x4, which is measured dead and whose stacking thesis was refuted.",
+  "archetype": "combo",
+  "card_roles": {
+   "1071": "engine",
+   "1092": "engine",
+   "1097": "engine",
+   "1121": "engine",
+   "1123": "tech",
+   "1146": "engine",
+   "1152": "engine",
+   "1156": "tech",
+   "1175": "tech",
+   "1227": "engine",
+   "1248": "engine",
+   "140": "engine",
+   "144": "engine",
+   "162": "line",
+   "163": "win",
+   "184": "win",
+   "19": "fuel",
+   "272": "win",
+   "276": "engine",
+   "377": "engine",
+   "5": "fuel",
+   "756": "win",
+   "9": "fuel"
+  },
+  "engine": "v2",
+  "l2": "slowking_hybrid",
+  "line": {
+   "big": [
+    243,
+    371,
+    1092
+   ],
+   "discard_fuel": [
+    5
+   ],
+   "focus": [
+    756,
+    272,
+    184,
+    163
+   ],
+   "need": {
+    "163": 2,
+    "184": 3,
+    "272": 2,
+    "756": 3
+   },
+   "stadiums": [
+    1248
+   ]
+  },
+  "main_attackers": [
+   756,
+   163
+  ],
+  "residual_cards": [
+   1092
+  ],
+  "seek_payloads": [
+   144,
+   276,
+   377
+  ],
+  "status": "hybrid: Mega Kangaskhan clock + Seek Inspiration secondary (modern competitive shape)",
+  "style": "spread"
+ },
+ "staryu": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1030": "line",
+   "1031": "win",
+   "1079": "engine",
+   "1086": "engine",
+   "1097": "engine",
+   "1120": "tech",
+   "1121": "engine",
+   "1122": "engine",
+   "1145": "engine",
+   "1159": "tech",
+   "1189": "engine",
+   "1223": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1229": "tech",
+   "17": "engine",
+   "3": "fuel",
+   "664": "line",
+   "665": "line",
+   "666": "engine"
+  },
+  "draw_supporters": [
+   1223
+  ],
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    964,
+    965,
+    1487
+   ],
+   "discard_fuel": [],
+   "focus": [
+    1031,
+    666,
+    665
+   ],
+   "need": {
+    "1031": 1,
+    "665": 1,
+    "666": 1
+   },
+   "stadiums": []
+  },
+  "search_items": [
+   1145,
+   1189
+  ],
+  "status": "candidate",
+  "style": "evolve"
+ },
+ "trevenant_control": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1086": "engine",
+   "1088": "engine",
+   "1097": "tech",
+   "1115": "engine",
+   "1121": "engine",
+   "1152": "engine",
+   "1171": "engine",
+   "1182": "engine",
+   "1227": "engine",
+   "1255": "tech",
+   "140": "engine",
+   "304": "engine",
+   "309": "line",
+   "310": "engine",
+   "5": "fuel",
+   "7": "fuel",
+   "878": "line",
+   "879": "win"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    1268,
+    183
+   ],
+   "discard_fuel": [],
+   "focus": [
+    879,
+    140
+   ],
+   "need": {
+    "140": 3,
+    "879": 3
+   },
+   "stadiums": [
+    1255
+   ]
+  },
+  "main_attackers": [
+   879
+  ],
+  "search_items": [
+   1115
+  ],
+  "status": "candidate",
+  "style": "spread"
+ },
+ "volcanion_box": {
+  "archetype": "ramp",
+  "card_roles": {
+   "1071": "engine",
+   "1088": "tech",
+   "1097": "tech",
+   "1118": "engine",
+   "1121": "engine",
+   "1122": "engine",
+   "1152": "tech",
+   "1182": "tech",
+   "1198": "engine",
+   "1205": "engine",
+   "1227": "engine",
+   "1256": "tech",
+   "140": "engine",
+   "2": "fuel",
+   "259": "win",
+   "573": "win",
+   "663": "tech",
+   "855": "tech"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    357,
+    819,
+    962
+   ],
+   "discard_fuel": [],
+   "focus": [
+    573,
+    259,
+    663
+   ],
+   "need": {
+    "259": 3,
+    "573": 3,
+    "663": 3
+   },
+   "stadiums": [
+    1256
+   ]
+  },
+  "status": "candidate",
+  "style": "aggro"
+ },
+ "zangoose": {
+  "archetype": "aggro",
+  "card_roles": {
+   "1002": "win",
+   "1086": "engine",
+   "1097": "engine",
+   "1119": "tech",
+   "1121": "engine",
+   "1122": "engine",
+   "1125": "engine",
+   "1152": "tech",
+   "1182": "tech",
+   "1205": "engine",
+   "1210": "engine",
+   "1227": "engine",
+   "1231": "tech",
+   "140": "engine",
+   "3": "fuel",
+   "305": "engine"
+  },
+  "engine": "v2",
+  "l2": "config",
+  "line": {
+   "big": [
+    183,
+    424,
+    1446
+   ],
+   "discard_fuel": [],
+   "focus": [
+    1002,
+    140,
+    305
+   ],
+   "need": {
+    "1002": 3,
+    "140": 3,
+    "305": 2
+   },
+   "stadiums": []
+  },
+  "search_items": [
+   1210,
+   1231
+  ],
+  "status": "candidate",
+  "style": "aggro"
+ }
+}
