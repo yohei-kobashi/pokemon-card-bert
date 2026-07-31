@@ -164,10 +164,16 @@ def sprt(w, l, p0, p1, alpha, beta, margin=0.05):
     ni = _llr(p0, p0 - margin)
     if ni <= lo:
         v = "WORSE"
-    elif sup >= hi:
+    elif ni >= hi and sup >= hi:
         v = "BETTER"
     elif ni >= hi and sup <= lo:
         v = "EQUIVALENT"
+    elif ni >= hi:
+        # Non-inferiority is settled, superiority is not -- the true rate sits inside the
+        # indifference region (p0, p1). Collapsing this to "undecided" would throw away the
+        # conclusion that was actually reached, which is the one that matters when the
+        # challenger is not expected to win.
+        v = "NOT_WORSE"
     else:
         v = "undecided"
     return sup, ni, v
