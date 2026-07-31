@@ -39,7 +39,7 @@ MASKS = (("full", {}),
          ("swapDECK", {"swap_deck": True}))
 
 _RE_TURN = re.compile(r"\bT(\d+)\.\d+")
-_RE_DECKSEG = re.compile(r"^DECK\[[^\]]*\]")
+from lm.serialize import DECK_SEG_RE as _RE_DECKSEG   # shared: see lm/serialize.py
 # Aggregate top1 averages over every decision in a game, and the late game outnumbers the
 # setup phase ~6:1. A segment that ONLY matters while the board is still empty can therefore
 # look free in the mean while being decisive where it applies -- so bucket by turn.
@@ -72,7 +72,10 @@ def swap_deck_pool(rows):
             by_deck.setdefault(r.get("deck") or m.group(0), m.group(0))
     keys = sorted(by_deck)
     if len(keys) < 2:
-        return {}
+        raise SystemExit(
+            "swap_deck_pool found %d DECK segments in %d rows -- the pattern does not match "
+            "this prompt format, so swapDECK would substitute NOTHING and report 'the model "
+            "ignores deck contents' when nothing was changed." % (len(keys), len(rows)))
     return {k: by_deck[keys[(i + 1) % len(keys)]] for i, k in enumerate(keys)}
 
 

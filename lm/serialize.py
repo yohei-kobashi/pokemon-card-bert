@@ -483,7 +483,11 @@ def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
 # cover only the first, so on v39 prompts `drop_deck` silently removed NOTHING and the ablation
 # reported `-DECK[] 67.3%` against `full 67.3%` -- which reads as "the model ignores the deck"
 # when in fact the deck was never taken away.
-_RE_DECK = re.compile(r"^DECK(?:\[[^\]]*\]|(?:\s+\w+\[[^\]]*\])+)\s*")
+# ONE definition, exported: tools/ablate_rerank.py had its own copy of the old anchored
+# pattern, so the fix here would not have reached swapDECK and that mask would have gone on
+# silently substituting nothing.
+DECK_SEG_RE = re.compile(r"^DECK(?:\[[^\]]*\]|(?:\s+\w+\[[^\]]*\])+)")
+_RE_DECK = re.compile(DECK_SEG_RE.pattern + r"\s*")
 _RE_MYID = re.compile(r"(?<= ID )ME (d_\S+)(?: (a_\S+))?\s*")
 
 
