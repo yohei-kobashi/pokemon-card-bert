@@ -53,6 +53,7 @@ def main():
     import library
     from cg.game import battle_start, battle_select, battle_finish
     from lm.actions import encode_option
+    from lm.action_token import dedup_options
     from lm.agent import make_lm_agent
     from lm.serialize import serialize_stateless
     from tools import rl_config
@@ -92,16 +93,16 @@ def main():
                         pick_ref = ref(obs)
                         if len(opts) >= 2 and pick_lm and pick_ref \
                                 and pick_ref[0] < len(opts) and pick_lm[0] < len(opts):
-                            # dedupe by rendered text, as build_rerank does: identical option
-                            # strings are one candidate, and the label must follow the survivor
-                            seen, cands = {}, []
-                            for i, o in enumerate(opts):
-                                c = encode_option(o, obs)
-                                if c not in seen:
-                                    seen[c] = len(cands)
-                                    cands.append(c)
-                            lab = seen.get(encode_option(opts[pick_ref[0]], obs))
-                            mine = seen.get(encode_option(opts[pick_lm[0]], obs))
+                            # Dedupe by the ACT, as build_rerank does -- not by rendered text.
+                            # Two copies of a card in a shuffled pile, or two face-down prizes,
+                            # are the same move written differently; keeping both puts one in the
+                            # positive slot and its twin among the negatives, and no feature
+                            # separates them. Measured on the reranker pool: 17.17% of records.
+                            raw = [encode_option(o, obs) for o in opts]
+                            cands, pos, keys = dedup_options(raw, obs)
+                            idx = {keys[p]: n for n, p in enumerate(pos)}
+                            lab = idx.get(keys[pick_ref[0]])
+                            mine = idx.get(keys[pick_lm[0]])
                             if len(cands) >= 2 and lab is not None:
                                 wrong = (lab != mine)
                                 st["wrong" if wrong else "right"] += 1
@@ -110,9 +111,18 @@ def main():
                                         "state": serialize_stateless(
                                             obs, deck_ids=ids, deck_name=deck, **fmt),
                                         "candidates": cands, "chosen": lab,
-                                        # the rendered menu is NOT deduped, so the decoder's
-                                        # target is the RAW option index, not `chosen`
+                                        # STALE under v40. `fmt` comes from rl_config.PROMPT_FMT,
+                                        # which sets menu_dedup=True, so the rendered menu IS the
+                                        # deduped list and the decoder's target is `chosen`.
+                                        # This raw option index is kept only for diagnostics;
+                                        # tools/rerank_to_sft.py derives the target from the
+                                        # rendered menu and checks the identity per record.
                                         "menu_index": pick_ref[0],
+                                        # what the LM played INSTEAD. Without it the pool says
+                                        # only which move was missed, so neither the confusion
+                                        # matrix nor a two-branch value comparison between the
+                                        # two moves can be built after the fact.
+                                        "lm_chosen": mine, "lm_menu_index": pick_lm[0],
                                         "deck": deck, "seat": lm_seat,
                                         "lm_was_wrong": wrong}) + "\n")
                                     st["written"] += 1
