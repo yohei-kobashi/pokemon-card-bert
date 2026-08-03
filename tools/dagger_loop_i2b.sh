@@ -219,11 +219,33 @@ PY
   rm -rf /root/out/i2_pre_r$ROUND
   say "warm-start preflight OK"
 
+  # bsz 32 is carried over from an A100 sweep where it peaked at 18.2 GiB. This card's round-1
+  # run peaked at 25.0 GiB at bsz 8 (it also carries --eval-n 4000 and --init-from), so bsz 32
+  # should land near 30 GiB of 47.4 -- but "should" is a projection from a different card, and if
+  # it is wrong the round dies and the GPU idles until someone notices. Fall back rather than
+  # stop: a slower round beats no round.
+  TLOG=$STATE/train_r$ROUND.log
   python3 tools/instance/sft_teacher.py --model "$BASEQ" --data "$MIX" \
       --domain-tokens --card-first "$VOCAB" --init-from "$MODEL" \
       --out "$OUT" --limit 400000 --eval-n 4000 --epochs 1 \
-      --bsz 32 --accum 1 --maxlen 896 --group-by-length --save-steps 1000 \
-      || { say "train FAILED -- stopping"; break; }
+      --bsz 32 --accum 1 --maxlen 896 --group-by-length --save-steps 1000 > "$TLOG" 2>&1
+  if [ $? -ne 0 ]; then
+    if grep -qiE "out of memory|CUDA error: out of memory" "$TLOG"; then
+      say "bsz 32 ran out of memory on this card -- retrying at the proven bsz 8 x accum 4"
+      rm -rf "$OUT"
+      python3 tools/instance/sft_teacher.py --model "$BASEQ" --data "$MIX" \
+          --domain-tokens --card-first "$VOCAB" --init-from "$MODEL" \
+          --out "$OUT" --limit 400000 --eval-n 4000 --epochs 1 \
+          --bsz 8 --accum 4 --maxlen 896 --group-by-length --save-steps 1000 >> "$TLOG" 2>&1 \
+          || { say "train FAILED at bsz 8 too -- stopping. See $TLOG"; break; }
+    else
+      say "train FAILED for a reason other than memory -- stopping. Last lines:"
+      tr '\r' '\n' < "$TLOG" | grep -av "^$" | tail -8
+      break
+    fi
+  fi
+  grep -aE "^\[peak\]|^\[saved\]" "$TLOG" | tail -2
+  tr '\r' '\n' < "$TLOG" | grep -a "it\]" | tail -1
   [ -f "$OUT/domain_embeddings.pt" ] || { say "STOP: no domain_embeddings.pt -- the added rows are lost"; break; }
 
   say "round $ROUND done -> $OUT"
