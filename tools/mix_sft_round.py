@@ -54,6 +54,14 @@ def main():
     ap.add_argument("--base", required=True, help="the big converted imitation pool")
     ap.add_argument("--base-n", type=int, default=200000, help="rows to sample from it")
     ap.add_argument("--dagger", default="", help="comma-separated, this round's only")
+    ap.add_argument("--dagger-max-frac", type=float, default=0.0,
+                    help="cap the DAgger share, subsampling uniformly when it overruns. 0 = use "
+                         "the whole collection. Round 1 ran uncapped and landed at 18.1% (49,532 "
+                         "rows of 273,314), which is where the risk lives: instance1 lost 2.75pt "
+                         "across 63 decks in a round whose DAgger came from ONE deck. That round "
+                         "also ran 7.8 epochs, and this trainer runs 1, so the two regimes are "
+                         "not the same -- but if round 2's screen regresses on the decks that "
+                         "were NOT targeted, this is the first knob to turn.")
     ap.add_argument("--valued", default="", help="comma-separated, used once each")
     ap.add_argument("--seed", type=int, required=True,
                     help="the ROUND number -- a fixed seed makes the base a constant")
@@ -69,6 +77,14 @@ def main():
     valued = read_all(a.valued.split(","))
     print("dagger:", flush=True)
     dagger = read_all(a.dagger.split(","))
+    if a.dagger_max_frac > 0 and dagger:
+        # solve n / (base_n + n + valued) <= f  for n
+        cap = int(a.dagger_max_frac * (a.base_n + len(valued))
+                  / max(1e-9, 1.0 - a.dagger_max_frac))
+        if cap < len(dagger):
+            print("  capped %d -> %d rows (%.1f%% of the round)"
+                  % (len(dagger), cap, 100 * a.dagger_max_frac), flush=True)
+            dagger = rng.sample(dagger, cap)
     print("base:", flush=True)
     base, npool = reservoir(a.base, a.base_n, rng)
     print("  %-46s %d of %d sampled (seed %d)"
