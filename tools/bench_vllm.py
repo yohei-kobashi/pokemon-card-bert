@@ -117,7 +117,11 @@ def main():
         # One request per unique first token, each the decision's prompt plus that token, built
         # from TOKEN IDS: appending the token as text and re-tokenising can merge it with the
         # preceding character and score a different token than the one being asked about.
-        from vllm import TokensPrompt
+        # 0.11 exposes it from vllm.inputs; later versions re-export it at the top level
+        try:
+            from vllm import TokensPrompt
+        except ImportError:
+            from vllm.inputs import TokensPrompt
         base_ids = [tk(p, add_special_tokens=False)["input_ids"] for p in prompts]
         owner, tp = [], []
         for i, hid in enumerate(hid_per):
