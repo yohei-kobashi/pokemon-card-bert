@@ -141,24 +141,65 @@ def _deck_names(header, path, decks=None):
     return out if len(out) == 2 and out[0] != out[1] else pos
 
 
+def _dedup_equivalent(raw, obs=None, state=None):
+    """Candidate texts with acts-that-are-the-same collapsed to their first occurrence.
+
+    Pass an `obs` (or a rendered `state`) to also collapse board slots the prompt shows
+    identically -- three copies of one Basic on the bench are one attach target, not three.
+    Without either this is the string-only collapse it always was.
+    """
+    from lm.action_token import dedup_options
+    return dedup_options(raw, obs, state)[0]
+
+
+def _canonical_index(cands, text, obs=None, state=None):
+    """Where the chosen option ended up after the collapse. -> index or None
+
+    Keyed the SAME way as the collapse: comparing by `equivalent` here while the collapse used
+    the board would map the label to a candidate the dedup had already merged away.
+    """
+    from lm.action_token import canon_key, slot_map_from_obs, slot_map_from_state
+    slots = (slot_map_from_obs(obs) if obs else
+             (slot_map_from_state(state) if state else {}))
+    want = canon_key(text, slots)
+    for i, c in enumerate(cands):
+        if c == text or canon_key(c, slots) == want:
+            return i
+    return None
+
+
 def _emit(out, st, gid, i, state, raw, chosen_idx, kind, deck=None, opp=None,
-          explored=False):
-    """Dedup candidate TEXTS (encode_option collisions), remap chosen to its text's canonical
-    index, drop if <2 distinct candidates, then write one listwise record.
+          explored=False, obs=None):
+    """Dedup candidates by the ACT they perform, remap chosen, drop if <2 remain, then write one
+    listwise record.
+
+    Deduping by exact text was not enough. `card:c305@DECK1` and `card:c305@DECK6` are two copies
+    of one card in a shuffled pile, and `facedown:PRIZE2` and `facedown:PRIZE3` are two face-down
+    prizes -- the same act, written differently. Keeping both put one in the positive slot and the
+    other in the negatives, so 17.17% of records (measured on v39_0731: card 48,811, facedown
+    18,657, energy 1,220) asked the model to rank apart two inputs that differ only in a position
+    number. There is no feature that separates them, so the only way to drive that loss down is to
+    memorise the number -- training pressure toward a spurious cue.
+
+    It is also free speed at deployment, where the cross-encoder pays one forward pass per
+    candidate: 5.84 -> 5.20 candidates per decision, and 5.65% of decisions collapse to a single
+    candidate, i.e. there was never a choice to score.
 
     ``deck``/``opp`` name the PILOT and its opponent so the trainer can sample a balanced
     mix. Records are winner-only, so their natural distribution is proportional to WINS:
     620-38,987 records per deck, and a uniform sample leaves the weakest decks with almost
     no representation."""
-    chosen_text = raw[chosen_idx]
-    seen, cands = {}, []
-    for c in raw:
-        if c not in seen:
-            seen[c] = len(cands); cands.append(c)
-    if len(cands) < 2:
+    from lm.action_token import dedup_options
+    cands, pos, keys = dedup_options(raw, obs)
+    # Map the label through the SAME keys the collapse used. Re-deriving it with a second
+    # comparison is how a label ends up pointing at a candidate that was merged away.
+    want = keys[chosen_idx]
+    chosen_new = next((n for n, p in enumerate(pos) if keys[p] == want), None)
+    if len(cands) < 2 or chosen_new is None:
+        st["n_nochoice"] += (len(cands) < 2)
         return
     out.write(json.dumps({"game_id": gid, "i": i, "state": state,
-                          "candidates": cands, "chosen": seen[chosen_text],
+                          "candidates": cands, "chosen": chosen_new,
                           "kind": kind, "deck": deck, "opp": opp,
                           "explored": explored}, ensure_ascii=False) + "\n")
     st["n_records"] += 1
@@ -203,7 +244,7 @@ def _build_shard(job):
         with open(done) as f:
             return json.load(f)
     st = {"n_games": 0, "n_records": 0, "n_cands": 0, "n_single": 0, "n_mp": 0,
-          "n_stop": 0, "mp_err": 0, "n_stale": 0}
+          "n_stop": 0, "mp_err": 0, "n_stale": 0, "n_nochoice": 0}
     tmp = shard + ".part"
     with gzip.open(tmp, "wt", encoding="utf-8") as out:
         for header, steps in _read_game(path):
@@ -245,7 +286,7 @@ def _build_shard(job):
                         continue
                     raw = [encode_option(o, obs) for o in opts]
                     _emit(out, st, gid, si, _ser(obs, p), raw, order[0], kind, mine,
-                          theirs, expl)
+                          theirs, expl, obs=obs)
                     st["n_single"] += 1
                     continue
 
@@ -261,7 +302,7 @@ def _build_shard(job):
                         if allow_stop:
                             raw = raw + [STOP]
                         _emit(out, st, gid, si, _ser(sub, p), raw, chosen_local, kind,
-                              mine, theirs, expl)
+                              mine, theirs, expl, obs=sub)
                         st["n_mp"] += 1
                         picked.append(pos_i)
                     if good and lo <= len(picked) < hi:      # winner stopped early (incl. declined)
@@ -269,7 +310,7 @@ def _build_shard(job):
                         if allow_stop and remaining:
                             raw = [encode_option(opts[i], obs) for i in remaining] + [STOP]
                             _emit(out, st, gid, si, _ser(sub, p), raw, len(raw) - 1, kind,
-                                  mine, theirs)
+                                  mine, theirs, obs=sub)
                             st["n_stop"] += 1
                 except Exception:
                     st["mp_err"] += 1

@@ -58,7 +58,8 @@ class QwenScorer:
     rule (indices only), which is the same quantity tools/instance/eval_teacher.py measures.
     """
 
-    def __init__(self, adapter, base=None, maxlen=1024, merge=True, kv=True, backend="hf"):
+    def __init__(self, adapter, base=None, maxlen=1024, merge=True, kv=True, backend="hf",
+                 fp8=False, compile_mode=""):
         # The base was hard-coded to the 9B. A Qwen3-4B checkpoint loaded on that base would
         # either fail on shapes or, worse, load an adapter trained for a different model. Read it
         # from the adapter's own config.
@@ -136,6 +137,41 @@ class QwenScorer:
                 print("[qwen] LoRA merged into the base weights", flush=True)
             except Exception as e:
                 print("[qwen] merge failed, keeping the adapter live: %s" % e, flush=True)
+        # FP8 is the one lever whose arithmetic clearly favours this workload. The prefill is
+        # compute-bound at ~52 TFLOP/s against ~91 TFLOPS of bf16 peak, and Ada (sm89) has FP8
+        # tensor cores at roughly twice bf16 -- so it raises the ceiling rather than chasing
+        # overhead. It also halves the weights, which matters more than the speed: the screen
+        # runs 3 shards because 12.3 GiB x 3 fills a 47.4 GiB card, and the shard count is what
+        # limits how much of instance2's 13.44 cores the game loops can use (3 shards are
+        # single-threaded Python, so they occupy about 3).
+        if fp8:
+            try:
+                from torchao.quantization import quantize_
+                cfg = None
+                for name in ("Float8DynamicActivationFloat8WeightConfig",
+                             "float8_dynamic_activation_float8_weight"):
+                    try:
+                        import torchao.quantization as _q
+                        obj = getattr(_q, name, None)
+                        if obj is not None:
+                            cfg = obj()
+                            break
+                    except Exception:
+                        continue
+                if cfg is None:
+                    raise RuntimeError("no float8 config in this torchao")
+                # lm_head is 154,733 x 2560 and its output IS the score, so it is quantised only
+                # if the equivalence check still passes; keep it out by default.
+                quantize_(model.model, cfg)
+                print("[qwen] FP8 dynamic-activation weights (body only)", flush=True)
+            except Exception as e:
+                print("[qwen] FP8 unavailable (%s) -- staying in bf16" % e, flush=True)
+        if compile_mode:
+            try:
+                model.forward = torch.compile(model.forward, mode=compile_mode, dynamic=True)
+                print("[qwen] torch.compile mode=%s" % compile_mode, flush=True)
+            except Exception as e:
+                print("[qwen] compile failed (%s)" % e, flush=True)
         self.model = model
         self.tk = getattr(tok, "tokenizer", tok)
         if self.tk.pad_token is None:

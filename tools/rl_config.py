@@ -42,8 +42,15 @@ def _all_decks():
 # 0 times in 40,000 samples, and `attach` (20.3% of ceiling) and `retreat` (33.6%, chance
 # 31.2%) are exactly the two kinds whose decisive input was therefore missing.
 # identify="op" drops `ID ME`, redundant given DECK[].
+# menu_dedup (v40, 2026-08-02) renders one menu entry per ACT. The cross-encoder is trained to
+# rank the deduped candidate list, so the un-deduped menu was showing it 7.08 options for 5.36
+# acts; on decisions that offer an attach the menu's attach share is inflated +4 to +6pt with a
+# standard deviation of 9-11pt, and the size of that inflation is set by how many copies of the
+# energy happen to be in hand -- noise with no bearing on whether attaching is right.
+# CHECKPOINTS BEFORE v40 (rerank_gte_v39, rerank_loop2..4) WERE TRAINED WITHOUT IT: screen those
+# with menu_dedup=False or they are scored on a format they never saw.
 PROMPT_FMT = dict(glossary="none", deck_mode="roles", deck_shuffle=False,
-                  board_facts=True, identify="op")
+                  board_facts=True, identify="op", menu_dedup=True)
 PROMPT_FMT_V37 = dict(glossary="none", deck_mode="remaining", deck_shuffle=True)
 
 

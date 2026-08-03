@@ -129,6 +129,14 @@ def main():
     ap.add_argument("--eval-n", type=int, default=2000)
     ap.add_argument("--grad-ckpt", action="store_true", help="gradient checkpointing (slower, less mem)")
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--margin-weight", type=float, default=0.0,
+                    help="weight of the value-margin term on records carrying `qvals` "
+                         "(tools/attach_label.py). 0 = off, i.e. byte-identical to the "
+                         "listwise-only run, so a pool with qvals can be trained either way "
+                         "and the term judged on its own")
+    ap.add_argument("--margin-scale", type=float, default=2.0,
+                    help="score gap demanded per unit of Q gap. Q is on a +/-1 scale where "
+                         "0.1 is ~5pp of win rate, so 2.0 asks for 0.2 logits there")
     ap.add_argument("--cap-matchup", type=int, default=0,
                     help="reservoir size PER (deck, opponent) -- balances the 3,683 matchups")
     ap.add_argument("--cap-deck", type=int, default=0,
@@ -245,12 +253,41 @@ def main():
             out[ri].append(logits[k])
         return [torch.stack(o) for o in out]
 
+    def value_margin(r, s):
+        """Pairwise hinge over candidates carrying a measured Q, margin proportional to the gap.
+
+        Cross-entropy on `chosen` gives the SAME gradient to a catastrophic mistake and to a
+        second-best-by-a-hair, which is the wrong shape for a decision whose payoff is two or
+        three turns away. `tools/attach_label.py` supplies Q per attach target from
+        counterfactual playouts; here a pair separated by a large Q gap must be separated by a
+        large score gap, while a pair worth the same asks for nothing at all -- exactly zero
+        gradient rather than a coin-flip label. Candidates with no Q (every non-attach option)
+        take no part; the listwise term above still ranks them.
+        """
+        q = r.get("qvals")
+        if not q:
+            return None
+        idx = [i for i, v in enumerate(q) if v is not None]
+        if len(idx) < 2:
+            return None
+        terms = []
+        for a in range(len(idx)):
+            for b in range(a + 1, len(idx)):
+                i, j = idx[a], idx[b]
+                gap = q[i] - q[j]
+                hi, lo = (i, j) if gap > 0 else (j, i)
+                m = args.margin_scale * abs(gap)
+                terms.append(torch.clamp(m - (s[hi].float() - s[lo].float()), min=0))
+        return torch.stack(terms).mean() if terms else None
+
     def listwise_loss(records):
         scores = score_batch(records, aug=True)
         losses = []
         for r, s in zip(records, scores):
-            losses.append(torch.nn.functional.cross_entropy(
-                s.unsqueeze(0).float(), torch.tensor([r["chosen"]], device=dev)))
+            ls = torch.nn.functional.cross_entropy(
+                s.unsqueeze(0).float(), torch.tensor([r["chosen"]], device=dev))
+            vm = value_margin(r, s) if args.margin_weight else None
+            losses.append(ls if vm is None else ls + args.margin_weight * vm)
         return torch.stack(losses).mean()
 
     @torch.no_grad()

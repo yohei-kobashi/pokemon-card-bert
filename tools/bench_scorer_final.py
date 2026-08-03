@@ -39,6 +39,8 @@ def main():
     ap.add_argument("--no-kv", action="store_true")
     ap.add_argument("--no-fast", action="store_true", help="the pre-optimisation path")
     ap.add_argument("--backend", default="hf", choices=["hf", "unsloth"])
+    ap.add_argument("--fp8", action="store_true")
+    ap.add_argument("--compile-mode", default="")
     a = ap.parse_args()
 
     import torch
@@ -55,7 +57,8 @@ def main():
                     break
 
     sc = QwenScorer(a.ckpt, merge=a.merge, kv=not (a.no_kv or a.no_fast),
-                    backend=a.backend)
+                    backend=a.backend, fp8=a.fp8,
+                    compile_mode=a.compile_mode)
     if a.no_fast:
         sc._klast = {}
     for i in range(3):
@@ -66,9 +69,11 @@ def main():
         sc._score_card_first(*d)
     torch.cuda.synchronize()
     el = (time.time() - t0) / len(dec)
-    tag = "%s merge=%s kv=%s ltk=%s" % (a.backend, a.merge, sc.kv, bool(sc._klast))
-    print("\nRESULT  %-46s %6.1f ms/decision   %.2fx vs 134.1 ms baseline"
-          % (tag, 1000 * el, 0.1341 / el), flush=True)
+    tag = "%s merge=%s kv=%s ltk=%s fp8=%s compile=%s" % (a.backend, a.merge, sc.kv,
+                                                          bool(sc._klast), a.fp8,
+                                                          a.compile_mode or "-")
+    print("\nRESULT  %-62s %6.1f ms/decision  %.2fx vs 134.1  %.2fx vs 65.8"
+          % (tag, 1000 * el, 0.1341 / el, 0.0658 / el), flush=True)
 
 
 if __name__ == "__main__":

@@ -69,6 +69,9 @@ def main():
     ap.add_argument("--backend", default="hf")
     ap.add_argument("--merge", type=int, default=1)
     ap.add_argument("--kv", type=int, default=1)
+    ap.add_argument("--fp8", type=int, default=0)
+    ap.add_argument("--compile-mode", default="")
+    ap.add_argument("--variant", default="hf,1,1,0,", help="backend,merge,kv,fp8,compile")
     a = ap.parse_args()
 
     dec = []
@@ -81,8 +84,8 @@ def main():
                 if len(dec) >= a.n:
                     break
     if a.child:
-        out = score_all(dec, ckpt=a.ckpt, backend=a.backend,
-                        merge=bool(a.merge), kv=bool(a.kv))
+        out = score_all(dec, ckpt=a.ckpt, backend=a.backend, merge=bool(a.merge),
+                        kv=bool(a.kv), fp8=bool(a.fp8), compile_mode=a.compile_mode)
         json.dump(out, open(a.child, "w"))
         return
     print("[data] %d decisions" % len(dec), flush=True)
@@ -92,8 +95,11 @@ def main():
     ref = run_child(common + ["--backend", "unsloth", "--merge", "0", "--kv", "0"],
                     "/tmp/scorer_ref.json")
     print("\n=== optimised: hf backend, merged LoRA, logits_to_keep, KV reuse ===", flush=True)
-    new = run_child(common + ["--backend", "hf", "--merge", "1", "--kv", "1"],
-                    "/tmp/scorer_new.json")
+    bk, mg, kvf, f8, cm = (a.variant.split(",") + ["", "", "", "", ""])[:5]
+    print("    variant: backend=%s merge=%s kv=%s fp8=%s compile=%s"
+          % (bk, mg, kvf, f8, cm or "-"), flush=True)
+    new = run_child(common + ["--backend", bk, "--merge", mg, "--kv", kvf,
+                              "--fp8", f8, "--compile-mode", cm], "/tmp/scorer_new.json")
 
     agree = 0
     gaps, big = [], 0
