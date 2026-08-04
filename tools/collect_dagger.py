@@ -92,6 +92,22 @@ def main():
     # measurement into a restatement of what was trained. The cost is anchor_frac of the round's
     # collected rows, which is why the fraction is small.
     ap.add_argument("--anchor-holdout", type=int, default=1)
+    # ---- DAgger's mixing coefficient -------------------------------------------------------
+    # Rolling out purely under the learner (beta = 0) is DAgger's on-policy ideal and is right
+    # while the learner is competent. It degenerates when the learner collapses: measured on
+    # ns_zoroark (0-40 in the mirror screen), 91% of its rows sit at >=5 prizes and 0% at <=1 --
+    # the learner never reaches an endgame, so DAgger never covers one for that deck, and the
+    # labels it does collect are worthless there (mean Q gap -0.0003 vs -0.0730 on the deck that
+    # disagrees least). Ross & Bagnell roll out under beta*expert + (1-beta)*learner and anneal
+    # beta to 0; we were running beta = 0 from the start.
+    #
+    # beta changes only which move ADVANCES the game. Every LM decision is still recorded, with
+    # engine_v2's answer as the label, so the row schema and the wrong/right accounting are
+    # unchanged -- what changes is the distribution of states those rows come from.
+    ap.add_argument("--beta", type=float, default=0.0, help="flat expert-mixing probability")
+    ap.add_argument("--beta-from", default="",
+                    help="screen JSON: per-deck beta = clip(0.5 - p, 0, --beta-max)")
+    ap.add_argument("--beta-max", type=float, default=0.5)
     args = ap.parse_args()
 
     import library
@@ -134,6 +150,17 @@ def main():
         different games anyway."""
         return args.anchor_base + (zlib.crc32(deck.encode()) & 0x1FFFFF) * 1000 + g
 
+    # Per-deck beta from the screen the round already computed. A deck the LM wins half of gets
+    # 0 (pure on-policy); one it never wins gets --beta-max.
+    beta_of = {}
+    if args.beta_from:
+        try:
+            for k, v in json.load(open(args.beta_from))["decks"].items():
+                beta_of[k] = max(0.0, min(args.beta_max, 0.5 - float(v["p"])))
+        except Exception as e:
+            print("[beta] %s unreadable (%s) -- falling back to --beta %.2f"
+                  % (args.beta_from, e, args.beta), flush=True)
+
     panel = [d.strip() for d in args.anchor_decks.split(",") if d.strip()]
     work = collections.OrderedDict((d, [args.games, 0]) for d in decks)
     if eng and panel:
@@ -148,6 +175,9 @@ def main():
         for di, (deck, (n_fresh, n_anchor)) in enumerate(work.items()):
             ids = [int(x) for x in open(library.deck_path(deck)) if x.strip()]
             prof = tuning.get(deck, {})
+            beta = beta_of.get(deck, args.beta)
+            if beta > 0:
+                print("[beta] %-24s %.2f" % (deck, beta), flush=True)
             lm_agent, _sc = make_agent(args.model, deck, ids, prof)
             ref = make_lm_agent(ids, prof, model=None)
             opp = make_lm_agent(ids, prof, model=None)
@@ -169,6 +199,13 @@ def main():
                 # slice (162 rows vs 163 on the same games). Keyed by the game's own seed, an
                 # anchor replays row for row.
                 grng = random.Random((args.seed << 32) ^ seed ^ (di << 16) ^ g)
+                # A SEPARATE stream for the beta coin: sharing grng would shift the keep-agree
+                # draws and stop an anchored game replaying row for row.
+                brng = random.Random(((args.seed << 32) ^ seed) + 0x5EED)
+                # Anchors always roll out at beta = 0. They are a measurement instrument, and
+                # beta is derived from the screen, which moves every round -- letting it move the
+                # anchors' state distribution would break the one thing they exist for.
+                gbeta = 0.0 if is_anchor else beta
                 gw = gn = 0
                 try:
                     for _ in range(4000):
@@ -224,9 +261,20 @@ def main():
                                         # back to a replayable game and anchored rows can be
                                         # compared like-for-like across rounds.
                                         "seed": seed, "anchor": is_anchor,
+                                        # The learner's own remaining prize count. Without it
+                                        # there is no way to see whether a round's rows cover
+                                        # the endgame or only a collapse -- the exact thing
+                                        # --beta exists to fix.
+                                        "prizes": len(
+                                            (cur["players"][lm_seat].get("prize") or [])),
                                         "lm_was_wrong": wrong}) + "\n")
                                     st["written"] += 1
-                        obs = battle_select(pick_lm)
+                        if gbeta > 0 and pick_ref != pick_lm and brng.random() < gbeta:
+                            st["expert_moves"] += 1
+                            obs = battle_select(pick_ref)
+                        else:
+                            st["lm_moves"] += 1
+                            obs = battle_select(pick_lm)
                 finally:
                     battle_finish()
                 if gn:
@@ -246,6 +294,10 @@ def main():
     # The line to track across rounds. Anchored games replay FIXED seeds, so this is a paired
     # error rate on the same openings -- it resolves in decisions, not games. Binomial SE only;
     # decisions within a game are correlated, so treat it as a leading indicator, not a gate.
+    em, lmm = st["expert_moves"], st["lm_moves"]
+    if em:
+        print("[beta] advanced %d moves with the expert of %d LM decisions (%.1f%%)"
+              % (em, em + lmm, 100.0 * em / max(1, em + lmm)), flush=True)
     for tag in ("anchor", "fresh"):
         n = st[tag + "_wrong"] + st[tag + "_right"]
         if not n:
