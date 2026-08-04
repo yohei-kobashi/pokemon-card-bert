@@ -12,7 +12,7 @@ import re
 import zlib
 from collections import Counter
 
-from lm import vocab
+from lm import costs, vocab
 from lm.actions import encode_option
 
 _TRAINER_KIND = {1: "ITEM", 2: "TOOL", 3: "SUP", 4: "STAD", 5: "NRG", 6: "SP-NRG"}
@@ -160,20 +160,33 @@ def _need_energy(cid, attached):
     return min(shorts) if shorts else None
 
 
-def _board_facts(p):
-    """` need:N rt:N` for one in-play Pokemon -- absent from v37 prompts entirely."""
+def _board_facts(p, obs=None, pi=None):
+    """` need:N rt:N` for one in-play Pokemon -- absent from v37 prompts entirely.
+
+    `rt` is the LIVE retreat cost when the observation is available, not the card's printed one.
+    The printed number is wrong wherever an effect changes it -- 19.4% of all offered retreats
+    fleet-wide, 47% on ns_zoroark (N's Castle) and 46% on ethan_hooh (Latias ex) -- and it is
+    wrong in the direction that tells the model a free retreat is unaffordable. See
+    [[prompt-lies-about-retreat-cost]]; tools/audit_costs.py is the regression guard, and it
+    checks the computed value against the menu (offered => cost <= attached energy).
+    """
     cid = p.get("id")
     out = []
     need = _need_energy(cid, p.get("energies") or [])
     if need is not None:
         out.append("need:%d" % need)
-    c = vocab._CARDS.get(cid)
-    if c is not None and c.retreatCost is not None:
-        out.append("rt:%d" % c.retreatCost)
+    rt = None
+    if obs is not None and pi is not None:
+        rt = costs.effective_retreat_cost(obs, pi, p)
+    if rt is None:                       # post-hoc rendering with no observation to read
+        c = vocab._CARDS.get(cid)
+        rt = c.retreatCost if c is not None else None
+    if rt is not None:
+        out.append("rt:%d" % rt)
     return (" " + " ".join(out)) if out else ""
 
 
-def _pk(p, board_facts=False):
+def _pk(p, board_facts=False, obs=None, pi=None):
     if not p:
         return "-"
     # '*' = appeared THIS turn (history-derived: can't evolve yet; some effects care)
@@ -187,16 +200,16 @@ def _pk(p, board_facts=False):
     if tools:                                   # tool CARDS (Cape/Belt change HP/damage)
         s += "|" + ",".join(vocab.card_tok(t) for t in tools)
     if board_facts:
-        s += _board_facts(p)
+        s += _board_facts(p, obs, pi)
     return s
 
 
-def _side(pl, me, board_facts=False):
+def _side(pl, me, board_facts=False, obs=None, pi=None):
     active = (pl.get("active") or [None])[0]
     bench = [b for b in (pl.get("bench") or []) if b]
-    s = f"A[{_pk(active, board_facts)}]"
+    s = f"A[{_pk(active, board_facts, obs, pi)}]"
     if bench:
-        s += " B[" + ",".join(_pk(b, board_facts) for b in bench) + "]"
+        s += " B[" + ",".join(_pk(b, board_facts, obs, pi) for b in bench) + "]"
     s += f" pz{len(pl.get('prize') or [])} dk{pl.get('deckCount')} bm{pl.get('benchMax')}"
     if me:                                          # my hand CONTENTS (tokens)
         s += f" H[{_tok_multiset([h['id'] for h in (pl.get('hand') or [])])}]"
@@ -221,8 +234,8 @@ def render_state(obs, deck_name=None, board_facts=False, identify="both"):
     flags = "".join(f for f, k in (("E", "energyAttached"), ("S", "supporterPlayed"),
                                    ("R", "retreated"), ("M", "stadiumPlayed")) if cur.get(k))
     return (f"T{cur['turn']}.{cur['turnActionCount']}"
-            f"{('/' + flags) if flags else ''} ME {_side(me, True, board_facts)} "
-            f"| OP {_side(op, False, board_facts)}{sd}{_identify(obs, yi, None if identify == 'op' else deck_name)}")
+            f"{('/' + flags) if flags else ''} ME {_side(me, True, board_facts, obs, yi)} "
+            f"| OP {_side(op, False, board_facts, obs, 1 - yi)}{sd}{_identify(obs, yi, None if identify == 'op' else deck_name)}")
 
 
 def _identify(obs, yi, deck_name=None):
@@ -247,7 +260,24 @@ def _identify(obs, yi, deck_name=None):
         return ""
 
 
-def render_options(obs):
+def render_options(obs, menu_dedup=False):
+    """``menu_dedup`` shows one entry per ACT instead of one per menu position.
+
+    The menu currently lists every option the engine offers, and 24.4% of those are the same act
+    written twice: four copies of one energy in hand give four `attach:c3@ACTIVE0` entries, and
+    two identical benched Basics give two targets nothing in the prompt distinguishes. Measured
+    over 60,000 decisions: 7.08 entries -> 5.36 acts, menu 111 -> 79 characters, 4.8% off the
+    whole prompt.
+
+    It is also a CONSISTENCY fix, not only a length one. The cross-encoder is trained to rank the
+    deduped candidate list (`lm/action_token.dedup_options`), so today it is shown 7.08 options
+    while being asked about 5.36 acts.
+
+    ENTRIES ARE RENUMBERED 0..n-1 over the surviving acts, so a pool built with this flag has
+    `menu_index` values that no longer point into the raw option list. That is harmless for the
+    cross-encoder, which never reads a menu index, but a DECODER pool must be rebuilt rather than
+    re-rendered. Off by default for exactly that reason.
+    """
     sel = obs["select"]
     # sub-select context: which card drives it + how much is left to place (damage/energy)
     cc = sel.get("contextCard")
@@ -261,9 +291,13 @@ def render_options(obs):
     if mp:                                  # one step of a sequential multi-pick
         pk = ",".join(mp["picked"]) if mp["picked"] else "-"
         extra += f" MP[{len(mp['picked'])}/{mp['k']} picked:{pk} +upto{mp['need']}]"
-    items = " ".join(f"{i}={encode_option(o, obs)}" for i, o in enumerate(sel["option"]))
+    texts = [encode_option(o, obs) for o in sel["option"]]
+    if menu_dedup:
+        from lm.action_token import dedup_options
+        texts = dedup_options(texts, obs)[0]
+    items = " ".join(f"{i}={t}" for i, t in enumerate(texts))
     if mp and mp.get("allow_stop"):         # may pick no more (min already satisfied)
-        items += f" {len(sel['option'])}={STOP}"
+        items += f" {len(texts)}={STOP}"
     return (f"SEL {vocab.ctx_name(sel['context'])}{extra} "
             f"n{sel['minCount']}-{sel['maxCount']} :: {items}")
 
@@ -448,7 +482,7 @@ def render_my_deck(deck_ids, obs=None, mode="static", shuffle=False, roles=None)
 
 def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
                         deck_mode="static", deck_shuffle=False, roles=None,
-                        board_facts=False, identify="both"):
+                        board_facts=False, identify="both", menu_dedup=False):
     """STATELESS prompt: current board only, no episode history. Self-contained =
     RULES glossary (see glossary_ids: our full deck first for cache-stability when
     deck_ids is given, else legacy visible-only) + our own deck identity + full board
@@ -460,7 +494,7 @@ def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
     still in the library. ``deck_shuffle`` permutes that list per decision so its ORDER
     cannot be the deck's signature. All three are part of the PROMPT FORMAT: build_rerank and
     lm/agent must pass the same values or the model is scored on inputs it never trained
-    on."""
+    on. So is ``menu_dedup`` -- see render_options."""
     if glossary not in GLOSSARY_MODES:
         raise ValueError(f"glossary must be one of {GLOSSARY_MODES}, got {glossary!r}")
     head = ""
@@ -475,7 +509,7 @@ def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
     return (head + (mine + " " if mine else "")
             + render_state(obs, deck_name, board_facts=board_facts,
                            identify=identify)
-            + " || " + render_options(obs))
+            + " || " + render_options(obs, menu_dedup))
 
 
 # Both DECK renderings: the flat `DECK[c1x4,...]` of static/remaining mode, and the
