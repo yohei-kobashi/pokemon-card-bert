@@ -86,7 +86,7 @@ SHARDS=${SHARDS:-4}
 MIRROR_SCREEN=${MIRROR_SCREEN:-1}
 SCREEN_SEED=${SCREEN_SEED:-1}
 DUAL_FIRST=${DUAL_FIRST:-1}
-ANCHOR_FRAC=${ANCHOR_FRAC:-0.25}
+ANCHOR_FRAC=${ANCHOR_FRAC:-0.10}
 SEEDED_COLLECT=${SEEDED_COLLECT:-1}
 MIRROR_SO=${MIRROR_SO:-/root/ptcg/repo/data/kaggle_engine_ext/libcg_mirror.so}
 # Collection is NOT the expensive part of a round: 3 decks x 72 games took 5 minutes against a

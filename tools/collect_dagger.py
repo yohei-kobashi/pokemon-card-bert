@@ -74,6 +74,13 @@ def main():
     # so it is a leading indicator and not a substitute for the gate.
     ap.add_argument("--anchor-frac", type=float, default=0.0)
     ap.add_argument("--anchor-base", type=int, default=2_000_000_000)
+    # Anchored games are HELD OUT by default: their rows are counted but not written. Writing
+    # them would put the exact states -- with engine_v2's answer as the label -- into the corpus
+    # the next round trains on, and the same seed replays the same opening, so next round's
+    # anchor error rate would fall by memorisation rather than by generalisation. That turns the
+    # measurement into a restatement of what was trained. The cost is anchor_frac of the round's
+    # collected rows, which is why the fraction is small.
+    ap.add_argument("--anchor-holdout", type=int, default=1)
     args = ap.parse_args()
 
     import library
@@ -93,6 +100,7 @@ def main():
     t0 = time.time()
 
     # Only ONE engine is loaded: importing cg.game would map the shipped libcg.so as well.
+    per_game = {"anchor": [], "fresh": []}    # (wrong, total) per game
     eng = None
     if args.engine_seed_base:
         from tools.mirror_env import DEFAULT_SO, MirrorEngine
@@ -134,6 +142,7 @@ def main():
                 # slice (162 rows vs 163 on the same games). Keyed by the game's own seed, an
                 # anchor replays row for row.
                 grng = random.Random((args.seed << 32) ^ seed ^ (di << 16) ^ g)
+                gw = gn = 0
                 try:
                     for _ in range(4000):
                         cur = obs.get("current") or {}
@@ -162,7 +171,11 @@ def main():
                                 wrong = (lab != mine)
                                 st["wrong" if wrong else "right"] += 1
                                 st["%s_%s" % (tag, "wrong" if wrong else "right")] += 1
-                                if wrong or grng.random() < args.keep_agree:
+                                gw += wrong
+                                gn += 1
+                                if is_anchor and args.anchor_holdout:
+                                    pass          # measured above, deliberately not written
+                                elif wrong or grng.random() < args.keep_agree:
                                     out.write(json.dumps({
                                         "state": serialize_stateless(
                                             obs, deck_ids=ids, deck_name=deck, **fmt),
@@ -189,6 +202,8 @@ def main():
                         obs = battle_select(pick_lm)
                 finally:
                     battle_finish()
+                if gn:
+                    per_game[tag].append((gw, gn))
             print("[%2d/%d] %-24s written %6d  (LM wrong %.1f%%)  %.0fs"
                   % (di + 1, len(decks), deck, st["written"],
                      100.0 * st["wrong"] / max(1, st["wrong"] + st["right"]),
@@ -203,10 +218,21 @@ def main():
     # decisions within a game are correlated, so treat it as a leading indicator, not a gate.
     for tag in ("anchor", "fresh"):
         n = st[tag + "_wrong"] + st[tag + "_right"]
-        if n:
-            p = st[tag + "_wrong"] / n
-            print("[%s] LM wrong %.2f%% +- %.2f of %d decisions"
-                  % (tag, 100 * p, 100 * (p * (1 - p) / n) ** 0.5, n), flush=True)
+        if not n:
+            continue
+        p = st[tag + "_wrong"] / n
+        se_binom = (p * (1 - p) / n) ** 0.5
+        # Decisions inside one game are NOT independent -- they share a deal and a line of play --
+        # so the binomial SE is a lower bound. The honest figure is the spread of the per-GAME
+        # error rate: SE = sd(rate) / sqrt(games). Report both; their ratio is the design effect.
+        rates = [w / m for w, m in per_game[tag] if m]
+        se = se_binom
+        if len(rates) > 1:
+            import statistics as _s
+            se = _s.stdev(rates) / len(rates) ** 0.5
+        note = " (held out)" if tag == "anchor" and args.anchor_holdout else ""
+        print("[%s] LM wrong %.2f%% +- %.2f (binomial +- %.2f, %d games / %d decisions)%s"
+              % (tag, 100 * p, 100 * se, 100 * se_binom, len(rates), n, note), flush=True)
 
 
 if __name__ == "__main__":

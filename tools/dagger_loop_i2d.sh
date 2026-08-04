@@ -78,7 +78,7 @@ DUAL_FIRST=${DUAL_FIRST:-1}
 # `[anchor] LM wrong x%` is a paired error rate on identical openings. It resolves in decisions
 # (tens of thousands) instead of games (tens) -- a fast read on whether a 6.5h train did
 # anything. It measures agreement with engine_v2, NOT win rate: leading indicator, not gate.
-ANCHOR_FRAC=${ANCHOR_FRAC:-0.25}
+ANCHOR_FRAC=${ANCHOR_FRAC:-0.15}
 SEEDED_COLLECT=${SEEDED_COLLECT:-1}
 MIRROR_SO=${MIRROR_SO:-/root/ptcg/repo/data/kaggle_engine_ext/libcg_mirror.so}
 DEADLINE_H=${DEADLINE_H:-72}
