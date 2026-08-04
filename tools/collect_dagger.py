@@ -48,10 +48,35 @@ def main():
                          "them all would concentrate the data on errors but also delete the "
                          "behaviour that currently works, so a slice is retained.")
     ap.add_argument("--seed", type=int, default=0)
+    # ---- seeded collection ------------------------------------------------------------------
+    # 0 keeps the legacy unseeded engine. Non-zero drives the patched engine
+    # (tools/build_engine_mirror.py) so a game is a function of its seed.
+    #
+    # SEED SPACE, kept disjoint on purpose. mirror_match's screen occupies 1..~65,600
+    # (args.seed + crc32(deck)&0xFFFF); collection starts at 100,000; anchors sit at 2e9. An
+    # overlap between screen and collection seeds would train the model on the very shuffles the
+    # gate scores it on.
+    #
+    # Within one process the seed is base + deck_index*1000 + game, so the CALLER must space
+    # bases by >= 100,000 per (round, pass, shard). Two shards sharing a base would replay
+    # identical games -- harmless while the engine ignored seeds, silently a 1/3 collection once
+    # it does not.
+    ap.add_argument("--engine-seed-base", type=int, default=0)
+    ap.add_argument("--mirror-so", default="")
+    ap.add_argument("--mirror-shuffle", type=int, default=0,
+                    help="1 = both seats get the SAME shuffle. Off by default: the two seats "
+                         "already share a decklist here, and correlating their draws narrows "
+                         "the state distribution DAgger exists to widen.")
+    # A slice of games replayed on FIXED seeds every round. Same opening, same deck order, so
+    # the LM's error rate on them is a paired measurement across rounds -- and it resolves in
+    # decisions (tens of thousands) rather than games (tens), which is why it can see a round's
+    # effect that the 40-game screen cannot. It measures AGREEMENT WITH engine_v2, not win rate,
+    # so it is a leading indicator and not a substitute for the gate.
+    ap.add_argument("--anchor-frac", type=float, default=0.0)
+    ap.add_argument("--anchor-base", type=int, default=2_000_000_000)
     args = ap.parse_args()
 
     import library
-    from cg.game import battle_start, battle_select, battle_finish
     from lm.actions import encode_option
     from lm.action_token import dedup_options
     from lm.agent import make_lm_agent
@@ -67,6 +92,24 @@ def main():
     st = collections.Counter()
     t0 = time.time()
 
+    # Only ONE engine is loaded: importing cg.game would map the shipped libcg.so as well.
+    eng = None
+    if args.engine_seed_base:
+        from tools.mirror_env import DEFAULT_SO, MirrorEngine
+        eng = MirrorEngine(args.mirror_so or DEFAULT_SO)
+        battle_select, battle_finish = eng.select, eng.finish
+        print("[seeded] base %d | anchors %.0f%% from %d | same-shuffle %d"
+              % (args.engine_seed_base, 100 * args.anchor_frac, args.anchor_base,
+                 args.mirror_shuffle), flush=True)
+    else:
+        from cg.game import battle_finish, battle_select, battle_start  # noqa: F401
+
+    def game_seed(di, g, n_anchor):
+        """-> (seed, is_anchor). Anchor games come first so they cover both seats (g % 2)."""
+        if g < n_anchor:
+            return args.anchor_base + di * 1000 + g, True
+        return args.engine_seed_base + di * 1000 + g, False
+
     with gzip.open(args.out, "wt") as out:
         for di, deck in enumerate(decks):
             ids = [int(x) for x in open(library.deck_path(deck)) if x.strip()]
@@ -74,11 +117,23 @@ def main():
             lm_agent, _sc = make_agent(args.model, deck, ids, prof)
             ref = make_lm_agent(ids, prof, model=None)
             opp = make_lm_agent(ids, prof, model=None)
+            n_anchor = int(round(args.games * args.anchor_frac)) if eng else 0
             for g in range(args.games):
                 lm_seat = g % 2
-                obs, _ = battle_start(ids, ids)
+                seed, is_anchor = game_seed(di, g, n_anchor)
+                if eng:
+                    obs = eng.start(ids, ids, seed, mirror=args.mirror_shuffle)
+                else:
+                    obs, _ = battle_start(ids, ids)
                 if obs is None:
                     continue
+                tag = "anchor" if is_anchor else "fresh"
+                # Per-GAME keep-agree draws. One shared stream made an anchored game's kept rows
+                # depend on how many draws the games before it had consumed, so changing the
+                # fresh seeds silently re-selected rows inside the anchored -- supposedly fixed --
+                # slice (162 rows vs 163 on the same games). Keyed by the game's own seed, an
+                # anchor replays row for row.
+                grng = random.Random((args.seed << 32) ^ seed ^ (di << 16) ^ g)
                 try:
                     for _ in range(4000):
                         cur = obs.get("current") or {}
@@ -106,7 +161,8 @@ def main():
                             if len(cands) >= 2 and lab is not None:
                                 wrong = (lab != mine)
                                 st["wrong" if wrong else "right"] += 1
-                                if wrong or rng.random() < args.keep_agree:
+                                st["%s_%s" % (tag, "wrong" if wrong else "right")] += 1
+                                if wrong or grng.random() < args.keep_agree:
                                     out.write(json.dumps({
                                         "state": serialize_stateless(
                                             obs, deck_ids=ids, deck_name=deck, **fmt),
@@ -124,6 +180,10 @@ def main():
                                         # two moves can be built after the fact.
                                         "lm_chosen": mine, "lm_menu_index": pick_lm[0],
                                         "deck": deck, "seat": lm_seat,
+                                        # which game produced this row, so a record can be traced
+                                        # back to a replayable game and anchored rows can be
+                                        # compared like-for-like across rounds.
+                                        "seed": seed, "anchor": is_anchor,
                                         "lm_was_wrong": wrong}) + "\n")
                                     st["written"] += 1
                         obs = battle_select(pick_lm)
@@ -138,6 +198,15 @@ def main():
           % (st["written"], st["wrong"], st["wrong"] + st["right"],
              100.0 * st["wrong"] / max(1, st["wrong"] + st["right"]),
              (time.time() - t0) / 60), flush=True)
+    # The line to track across rounds. Anchored games replay FIXED seeds, so this is a paired
+    # error rate on the same openings -- it resolves in decisions, not games. Binomial SE only;
+    # decisions within a game are correlated, so treat it as a leading indicator, not a gate.
+    for tag in ("anchor", "fresh"):
+        n = st[tag + "_wrong"] + st[tag + "_right"]
+        if n:
+            p = st[tag + "_wrong"] / n
+            print("[%s] LM wrong %.2f%% +- %.2f of %d decisions"
+                  % (tag, 100 * p, 100 * (p * (1 - p) / n) ** 0.5, n), flush=True)
 
 
 if __name__ == "__main__":

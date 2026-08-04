@@ -25,6 +25,38 @@ standard practice in engine testing. Expected decisive games at the default boun
 Raise --p1 when only a large effect matters; it resolves faster but stops distinguishing small
 real edges from none.
 
+--mirror goes one step further: the same decklist AND the same shuffle order for both seats, and
+each seed replayed once per seat. Needs the patched engine from tools/build_engine_mirror.py.
+Two consequences:
+
+  * With identical pilots every pair splits, so p is exactly 0.500 with SE exactly 0 -- the null
+    is structural, not merely expected.
+  * The two games of a pair are dependent, so the SPRT runs on PAIRS (B won both / A won both /
+    split, which carries no information about piloting and is skipped). Treating the games as
+    independent Bernoulli trials would be wrong by a factor 2(1-split_rate), i.e.
+    anti-conservative below a 50% split rate and conservative above it.
+
+WHERE THE GAIN IS, measured on engine vs engine-weakened-15%:
+
+  * Re-running the SAME comparison is bit-identical (fixed seeds, deterministic pilots). That is
+    the point for the gate: the same checkpoint re-scores 2.6pt apart today
+    ([[rl-gate-is-noisier-than-assumed]]), and here it re-scores at 0.0pt.
+  * At FIXED N (600 games) the paired estimator needs 0.48x the games on dragapult, 0.42x on
+    alakazam, 0.93x on crustle_stall -- never worse, ~2x on two of three. It buys this by
+    measuring a BIGGER gap, not a smaller variance.
+  * Under SPRT EARLY STOPPING most of that is given back: dragapult reaches WORSE in 92 games
+    against stock's 101. The sign test conditions on decisive pairs, so the ~40% of games that
+    land in split pairs pay for nothing. (Conditioning is the right test -- the split rate is a
+    nuisance parameter -- but the fixed-N paired t uses those splits as exact zeros, which is
+    where the 2x came from.) So: prefer --mirror with a fixed N, not with aggressive stopping.
+
+CALIBRATION. Pair-level effects run about 1.75x the game-level gap (measured 2.01 / 1.70 / 1.53),
+so BOTH thresholds are conservative on pairs: --p1 0.55 -> ~0.59 (superiority, the BETTER side)
+and --margin 0.05 -> ~0.09 (non-inferiority, which is what actually decides WORSE and so is the
+one that matters to the screening loop). Leaving them at the game-level defaults gives the 2x
+back to the stopping rule. They are NOT changed automatically: the verdict strings feed
+dagger_loop_*.sh, and silently redefining WORSE would corrupt comparisons across rounds.
+
 SCOPE. This answers "who pilots THIS deck better in the mirror", not "who wins on the ladder".
 A mirror has no matchup asymmetry, so a pilot can be good here and bad against the field; the
 live-weighted protocol remains the thing to judge submissions on. Run it per deck -- the fleet
@@ -34,7 +66,9 @@ average moves with a single deck ([[lm-below-engine-baseline]]).
 """
 import argparse
 import json
+import hashlib
 import math
+import statistics
 import os
 import sys
 import time
@@ -381,6 +415,30 @@ class HFRerankScorer:
 _SCORERS = {}
 
 
+def make_noisy(agent, q, salt=0):
+    """`agent`, but on a q-fraction of states it plays a random legal move instead.
+
+    A pilot of KNOWN, tunable weakness, for testing the harness itself without a GPU. The coin is
+    a hash of the observation, not a live RNG: a pilot carrying its own randomness re-randomises
+    between the two games of a --mirror pair and destroys the common random numbers the pairing
+    exists to exploit.
+    """
+    import hashlib
+    import random as _random
+
+    def f(obs):
+        d = hashlib.blake2b(json.dumps(obs["current"], sort_keys=True).encode(),
+                            digest_size=8, salt=str(salt).encode()[:16]).digest()
+        n_ = int.from_bytes(d, "big")
+        if n_ / 2**64 < q:
+            sel = obs["select"]
+            n = len(sel["option"])
+            k = min(max(sel["minCount"], min(sel["maxCount"], 1)), n)
+            return _random.Random(n_).sample(range(n), k) if k > 0 else []
+        return agent(obs)
+    return f
+
+
 def make_agent(spec, deck_name, deck_ids, profile):
     """The scorer is CACHED across decks. It does not depend on the deck -- only the prompt
     does -- and rebuilding it per deck loaded a fresh 9B for every one of 63 decks without
@@ -392,6 +450,9 @@ def make_agent(spec, deck_name, deck_ids, profile):
     fmt = dict(rl_config.PROMPT_FMT)
     if spec == "engine":
         return make_lm_agent(deck_ids, profile, model=None), None
+    if spec.startswith("noisy:"):   # harness self-test: engine_v2 weakened by a known amount
+        return make_noisy(make_lm_agent(deck_ids, profile, model=None),
+                          float(spec.split(":", 1)[1])), None
     if spec in _SCORERS:
         sc = _SCORERS[spec]
         return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
@@ -461,7 +522,32 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.05)
     ap.add_argument("--beta", type=float, default=0.05)
     ap.add_argument("--out", default="")
+    ap.add_argument("--mirror", action="store_true",
+                    help="same decklist AND the same shuffle order for both seats, and replay "
+                         "each seed once per seat. Needs the patched engine from "
+                         "tools/build_engine_mirror.py.")
+    ap.add_argument("--mirror-so", default="")
+    ap.add_argument("--seed", type=int, default=1, help="--mirror: base seed for the shuffles")
     args = ap.parse_args()
+
+    eng = None
+    if args.mirror:
+        import zlib
+
+        from tools.mirror_env import DEFAULT_SO, MirrorEngine
+        from tools.mirror_env import play as mplay
+        so_path = args.mirror_so or DEFAULT_SO
+        eng = MirrorEngine(so_path)
+        # Reproducibility is guaranteed per (seed, .so), NOT per seed alone: the permutation
+        # std::shuffle produces from a given mt19937 state is implementation-defined, so a .so
+        # built with a different libstdc++ can deal a different game from the same seed. Record
+        # which binary produced these numbers so a cross-round comparison can be checked.
+        so_sha = hashlib.sha256(open(so_path, "rb").read()).hexdigest()[:16]
+        if abs(args.p1 - 0.55) < 1e-9 or abs(args.margin - 0.05) < 1e-9:
+            print("[mirror] --p1 0.55 / --margin 0.05 are calibrated for game-level effects; on "
+                  "pairs the gap runs ~1.75x, so ~0.59 and ~0.09 are the equivalents. The "
+                  "defaults still work, they just stop later than they need to (--margin is the "
+                  "one that decides WORSE).", flush=True)
 
     from tools.arena import play
     tuning = json.load(open(os.path.join(ROOT, "agents", "tuning.json")))
@@ -469,6 +555,19 @@ def main():
     for deck in args.deck:
         ids = load_deck(deck)
         prof = tuning.get(deck, {})
+        if args.mirror and not globals().get("_FP_DONE"):
+            # Fingerprint a FIXED deck, never this shard's first one: a sharded screen would
+            # otherwise stamp a different fingerprint per shard, and the merged file would look
+            # like it changed engines the moment --shards changed.
+            import library
+
+            from tools.mirror_env import engine_fingerprint
+            fp_deck = sorted(library.list_decks())[0]
+            fp_ids = load_deck(fp_deck)
+            fp = engine_fingerprint(eng, fp_ids)
+            print("[mirror] engine %s\n[mirror] binary sha %s | shuffle fingerprint %s (deck %s)"
+                  % (so_path, so_sha, fp, fp_deck), flush=True)
+            globals()["_FP_DONE"] = fp
         agentA, _ = make_agent(args.a, deck, ids, prof)
         agentB, scB = make_agent(args.b, deck, ids, prof)
         w = l = d = 0
@@ -476,43 +575,90 @@ def main():
         # moved first (tools/diag_pilot.py) but 4-36 with seats alternating. A pilot that
         # collapses in one seat is a different bug from a pilot that is simply weaker.
         seat = {0: [0, 0], 1: [0, 0]}
+        pair_vals = []          # --mirror: B's share of each pair, in {0, 0.5, 1}
+        pw = pl = 0             # --mirror: pairs B won/lost from BOTH seats
         t0 = time.time()
         verdict = "undecided"
-        for g in range(args.max_games):
-            # swap seats every game: first-player advantage is a systematic bias, and
-            # alternating cancels it without needing to know how large it is
-            b_seat = 1 if g % 2 == 0 else 0
-            if b_seat == 1:
-                r = play(agentA, agentB, ids, ids)
-                b_won = (r == 1)
-            else:
-                r = play(agentB, agentA, ids, ids)
-                b_won = (r == 0)
-            if r is not None:
-                seat[b_seat][0 if b_won else 1] += 1
+        base_seed = args.seed + (zlib.crc32(deck.encode()) & 0xFFFF if args.mirror else 0)
+
+        def record(r, b_seat):
+            nonlocal w, l, d
             if r is None:
                 d += 1
-            elif b_won:
+                return None
+            b_won = (r == 1) if b_seat == 1 else (r == 0)
+            seat[b_seat][0 if b_won else 1] += 1
+            if b_won:
                 w += 1
             else:
                 l += 1
-            if w + l >= 20:
-                sup, ni, verdict = sprt(w, l, args.p0, args.p1, args.alpha, args.beta,
+            return b_won
+
+        # --mirror plays each seed TWICE, once per seat, and the SPRT then runs on those pairs
+        # rather than on games. The two games of a pair are strongly dependent -- when the pilots
+        # agree the mirror guarantees they split -- so feeding them to a Bernoulli SPRT as
+        # independent trials is wrong in a direction that depends on the deck: with a split rate
+        # s the true variance is 2(1-s)x the independent assumption, i.e. anti-conservative below
+        # s=0.5 and conservative above it. A pair is one trial: B won both, A won both, or split
+        # (which carries no information about piloting and is skipped).
+        units = args.max_games // 2 if args.mirror else args.max_games
+        for g in range(units):
+            if args.mirror:
+                s = base_seed + g
+                b1 = record(mplay(eng, agentA, agentB, ids, ids, s, mirror=1), 1)
+                b2 = record(mplay(eng, agentB, agentA, ids, ids, s, mirror=1), 0)
+                got = [x for x in (b1, b2) if x is not None]
+                pair_vals.append(sum(got) / len(got) if got else 0.5)
+                if b1 is not None and b2 is not None and b1 == b2:
+                    pw += b1
+                    pl += not b1
+                sw, sl, ngames = pw, pl, 2 * (g + 1)
+            else:
+                # swap seats every game: first-player advantage is a systematic bias, and
+                # alternating cancels it without needing to know how large it is
+                b_seat = 1 if g % 2 == 0 else 0
+                if b_seat == 1:
+                    record(play(agentA, agentB, ids, ids), 1)
+                else:
+                    record(play(agentB, agentA, ids, ids), 0)
+                sw, sl, ngames = w, l, g + 1
+            if sw + sl >= 20:
+                sup, ni, verdict = sprt(sw, sl, args.p0, args.p1, args.alpha, args.beta,
                                         args.margin)
                 if verdict != "undecided":
                     break
-            if (g + 1) % 20 == 0:
-                sup, ni, _v = sprt(w, l, args.p0, args.p1, args.alpha, args.beta, args.margin)
-                print("  %-22s %3d games  B %3d-%-3d (%.1f%%) draws %d  sup %+.2f ni %+.2f  %.0fs"
-                      % (deck, g + 1, w, l, 100.0 * w / max(1, w + l), d, sup, ni,
+            if ngames % 20 == 0:
+                sup, ni, _v = sprt(sw, sl, args.p0, args.p1, args.alpha, args.beta, args.margin)
+                extra = ("  pairs %d-%d split %.0f%%"
+                         % (pw, pl, 100.0 * (len(pair_vals) - pw - pl) / max(1, len(pair_vals)))
+                         if args.mirror else "")
+                print("  %-22s %3d games  B %3d-%-3d (%.1f%%) draws %d  sup %+.2f ni %+.2f%s  %.0fs"
+                      % (deck, ngames, w, l, 100.0 * w / max(1, w + l), d, sup, ni, extra,
                          time.time() - t0), flush=True)
         n = w + l
         p = w / max(1, n)
-        se = math.sqrt(0.25 / max(1, n))
-        sup, ni, verdict = sprt(w, l, args.p0, args.p1, args.alpha, args.beta, args.margin)
+        # The independent-trial SE is wrong once games are paired. Take it from the spread of the
+        # pair values instead: with identical pilots every pair is exactly 0.5, so this correctly
+        # reports SE 0 where sqrt(0.25/n) would claim residual uncertainty that does not exist.
+        if args.mirror and len(pair_vals) > 1:
+            p = sum(pair_vals) / len(pair_vals)
+            se = statistics.stdev(pair_vals) / math.sqrt(len(pair_vals))
+        else:
+            se = math.sqrt(0.25 / max(1, n))
+        sup, ni, verdict = sprt(pw if args.mirror else w, pl if args.mirror else l,
+                                args.p0, args.p1, args.alpha, args.beta, args.margin)
         print("%-24s B %d-%d = %.1f%% (95%% CI %.1f-%.1f)  draws %d  sup %+.2f ni %+.2f -> %s   %.0fs"
               % (deck, w, l, 100 * p, 100 * (p - 1.96 * se), 100 * (p + 1.96 * se), d,
                  sup, ni, verdict, time.time() - t0), flush=True)
+        if args.mirror:
+            npair = len(pair_vals)
+            split = npair - pw - pl
+            print("  pairs: B %d - A %d, %d split (%.1f%%)  paired SE %.3f  seed base %d"
+                  % (pw, pl, split, 100.0 * split / max(1, npair), se, base_seed), flush=True)
+            if pw + pl == 0 and npair:
+                print("  NOTE: every pair split -- on this deck the two pilots never diverged "
+                      "into a different result, so the mirror says they are interchangeable "
+                      "here, not that the test lacked games.", flush=True)
         for si in (0, 1):
             sw, sl = seat[si]
             if sw + sl:
@@ -527,6 +673,16 @@ def main():
         results[deck] = {"w": w, "l": l, "d": d, "p": p, "se": se,
                          "verdict": verdict, "sup": sup, "ni": ni,
                          "seat0": seat[0], "seat1": seat[1]}
+        if args.mirror:
+            # NEW fields only -- w/l/d/p keep their meaning so mirror and non-mirror rounds stay
+            # comparable in the loop scripts that diff `p` across rounds.
+            results[deck].update({"mirror": True, "pair_w": pw, "pair_l": pl,
+                                  "pairs": len(pair_vals), "seed_base": base_seed,
+                                  # binary sha is advisory (it differs between machines that
+                                  # nonetheless deal identical games); the fingerprint is the
+                                  # invariant that must match for numbers to be comparable.
+                                  "engine_sha": so_sha,
+                                  "shuffle_fp": globals().get("_FP_DONE", "")})
     if args.out:
         with open(args.out, "w") as f:
             json.dump({"a": args.a, "b": args.b, "decks": results}, f, indent=1)
