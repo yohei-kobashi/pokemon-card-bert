@@ -439,6 +439,48 @@ def make_noisy(agent, q, salt=0):
     return f
 
 
+def make_no_kind(agent, banned):
+    """`agent`, but never plays `banned`. When it would, substitute `end` if that is on the menu
+    and otherwise the first other option -- which is how the LM actually substitutes it on
+    ns_zoroark (retreat -> end 49%, retreat -> play 39%)."""
+    from lm.actions import encode_option
+
+    def f(obs):
+        pick = agent(obs)
+        sel = obs.get("select") or {}
+        opts = sel.get("option") or []
+        if not pick or len(pick) != 1 or sel.get("minCount", 1) > 1 or pick[0] >= len(opts):
+            return pick
+        kind = lambda i: encode_option(opts[i], obs).split(":", 1)[0].split("@", 1)[0]
+        if kind(pick[0]) != banned:
+            return pick
+        alt = None
+        for i in range(len(opts)):
+            if kind(i) == "end":
+                alt = i
+                break
+            if kind(i) != banned and alt is None:
+                alt = i
+        return [alt] if alt is not None else pick
+    return f
+
+
+def make_defer(lm_agent, ref_agent, kinds):
+    """The LM pilots, except at decisions where any candidate is one of `kinds` -- those go to
+    engine_v2. Isolates how much of a deficit ONE action kind accounts for (the method that
+    localised the attach deficit to +11.4pt in [[attach-decisions-at-chance]])."""
+    from lm.actions import encode_option
+    want = set(kinds)
+
+    def f(obs):
+        opts = (obs.get("select") or {}).get("option") or []
+        for o in opts:
+            if encode_option(o, obs).split(":", 1)[0].split("@", 1)[0] in want:
+                return ref_agent(obs)
+        return lm_agent(obs)
+    return f
+
+
 def make_agent(spec, deck_name, deck_ids, profile):
     """The scorer is CACHED across decks. It does not depend on the deck -- only the prompt
     does -- and rebuilding it per deck loaded a fresh 9B for every one of 63 decks without
@@ -453,6 +495,18 @@ def make_agent(spec, deck_name, deck_ids, profile):
     if spec.startswith("noisy:"):   # harness self-test: engine_v2 weakened by a known amount
         return make_noisy(make_lm_agent(deck_ids, profile, model=None),
                           float(spec.split(":", 1)[1])), None
+    if spec.startswith("defer:"):
+        # defer:<kind>[,<kind>]:<modelspec>
+        _, kinds, sub = spec.split(":", 2)
+        lm, sc = make_agent(sub, deck_name, deck_ids, profile)
+        return make_defer(lm, make_lm_agent(deck_ids, profile, model=None),
+                          kinds.split(",")), sc
+    if spec.startswith("nokind:"):
+        # engine_v2 with ONE action kind ablated, substituted the way the LM substitutes it.
+        # Turns "the LM never does X" from a correlation into a causal test: take X away from
+        # the pilot that wins, and see whether it stops winning.
+        return make_no_kind(make_lm_agent(deck_ids, profile, model=None),
+                            spec.split(":", 1)[1]), None
     if spec in _SCORERS:
         sc = _SCORERS[spec]
         return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
