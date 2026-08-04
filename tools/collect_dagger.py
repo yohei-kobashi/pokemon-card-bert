@@ -118,8 +118,9 @@ def main():
         from tools.mirror_env import DEFAULT_SO, MirrorEngine
         eng = MirrorEngine(args.mirror_so or DEFAULT_SO)
         battle_select, battle_finish = eng.select, eng.finish
-        print("[seeded] base %d | anchors %.0f%% from %d | same-shuffle %d"
-              % (args.engine_seed_base, 100 * args.anchor_frac, args.anchor_base,
+        panel_n = len([d for d in args.anchor_decks.split(",") if d.strip()])
+        print("[seeded] base %d | anchor panel %d decks x %d games from %d | same-shuffle %d"
+              % (args.engine_seed_base, panel_n, args.anchor_games, args.anchor_base,
                  args.mirror_shuffle), flush=True)
     else:
         from cg.game import battle_finish, battle_select, battle_start  # noqa: F401
