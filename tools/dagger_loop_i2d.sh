@@ -78,7 +78,8 @@ DUAL_FIRST=${DUAL_FIRST:-1}
 # `[anchor] LM wrong x%` is a paired error rate on identical openings. It resolves in decisions
 # (tens of thousands) instead of games (tens) -- a fast read on whether a 6.5h train did
 # anything. It measures agreement with engine_v2, NOT win rate: leading indicator, not gate.
-ANCHOR_FRAC=${ANCHOR_FRAC:-0.15}
+ANCHOR_PANEL=${ANCHOR_PANEL:-crustle_stall,alakazam,dragapult,mega_lucario,rockets_honchkrow,ns_zoroark,marnie_grimmsnarl,archaludon,hydrapple,chandelure,trevenant_control,zangoose}
+ANCHOR_GAMES=${ANCHOR_GAMES:-8}
 SEEDED_COLLECT=${SEEDED_COLLECT:-1}
 MIRROR_SO=${MIRROR_SO:-/root/ptcg/repo/data/kaggle_engine_ext/libcg_mirror.so}
 DEADLINE_H=${DEADLINE_H:-72}
@@ -271,15 +272,20 @@ PY
         # collect_dagger uses base + deck_index*1000 + game, so bases are spaced 100,000 apart.
         SBASE=0
         [ "$SEEDED_COLLECT" = 1 ] && SBASE=$(( 100000 + (((ROUND * 10 + PASS) * 16 + i) * 100000) ))
-        # Anchors are a FIXED measurement set, so they are collected on pass 1 only. Their seeds
-        # do not depend on PASS -- a later pass would replay the identical games and merge exact
-        # duplicates into the round (12.5% of a 2-pass round), over-weighting those states in
-        # training and buying nothing.
-        AF=0
-        [ "$PASS" = 1 ] && AF=$ANCHOR_FRAC
+        # Anchors are a FIXED measurement set, collected on pass 1 only: their seeds do not
+        # depend on PASS, so a later pass would replay the identical games for nothing. The panel
+        # is also SPLIT across the shards -- handing the whole panel to each of the three would
+        # play every anchor game three times.
+        AG=0
+        APANEL=""
+        if [ "$PASS" = 1 ] && [ -n "$ANCHOR_PANEL" ]; then
+          AG=$ANCHOR_GAMES
+          APANEL=$(python3 -c "import sys; p='$ANCHOR_PANEL'.split(','); print(','.join(p[int(sys.argv[1])::int(sys.argv[2])]))" "$i" "$SHARDS")
+        fi
         PYTHONPATH=cg-lib nohup python3 tools/collect_dagger.py --decks "$DECKS" \
             --model "qwen:$MODEL" --games "$COLLECT_GAMES" --seed "$((ROUND * 100 + PASS))" \
-            --engine-seed-base "$SBASE" --anchor-frac "$AF" --mirror-so "$MIRROR_SO" \
+            --engine-seed-base "$SBASE" --mirror-so "$MIRROR_SO" \
+            --anchor-decks "$APANEL" --anchor-games "$AG" \
             --out "$STATE/dagger_r$ROUND.p$PASS.$i.jsonl.gz" \
             > "$STATE/collect_r$ROUND.p$PASS.$i.log" 2>&1 &
         i=$((i+1))

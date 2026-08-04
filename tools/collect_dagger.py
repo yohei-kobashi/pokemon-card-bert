@@ -72,7 +72,18 @@ def main():
     # decisions (tens of thousands) rather than games (tens), which is why it can see a round's
     # effect that the 40-game screen cannot. It measures AGREEMENT WITH engine_v2, not win rate,
     # so it is a leading indicator and not a substitute for the gate.
-    ap.add_argument("--anchor-frac", type=float, default=0.0)
+    # A FIXED panel of decks, played every round with seeds keyed by the DECK NAME. Both of
+    # those matter. Keying the seed by the deck's INDEX in --decks made the anchor follow the
+    # deck's position in a target list that is re-chosen every round, so the same deck drew
+    # different games (dragapult: di=1 -> 101xxx one round, di=2 -> 202xxx the next); and taking
+    # the panel from the targets meant a deck that left the tier stopped being measured, and the
+    # anchor count moved with GAMES. None of that is comparable across rounds.
+    ap.add_argument("--anchor-decks", default="", help="comma list; fixed across rounds")
+    ap.add_argument("--anchor-games", type=int, default=0, help="per anchor deck, absolute")
+    ap.add_argument("--anchor-frac", type=float, default=0.0,
+                    help="legacy: carve this fraction out of --games on the TARGET decks. Not "
+                         "comparable across rounds when the target list changes; prefer "
+                         "--anchor-decks/--anchor-games.")
     ap.add_argument("--anchor-base", type=int, default=2_000_000_000)
     # Anchored games are HELD OUT by default: their rows are counted but not written. Writing
     # them would put the exact states -- with engine_v2's answer as the label -- into the corpus
@@ -101,6 +112,7 @@ def main():
 
     # Only ONE engine is loaded: importing cg.game would map the shipped libcg.so as well.
     per_game = {"anchor": [], "fresh": []}    # (wrong, total) per game
+    per_deck = collections.defaultdict(lambda: [0, 0])   # deck -> [anchor wrong, anchor total]
     eng = None
     if args.engine_seed_base:
         from tools.mirror_env import DEFAULT_SO, MirrorEngine
@@ -112,23 +124,37 @@ def main():
     else:
         from cg.game import battle_finish, battle_select, battle_start  # noqa: F401
 
-    def game_seed(di, g, n_anchor):
-        """-> (seed, is_anchor). Anchor games come first so they cover both seats (g % 2)."""
-        if g < n_anchor:
-            return args.anchor_base + di * 1000 + g, True
-        return args.engine_seed_base + di * 1000 + g, False
+    import zlib
+
+    def anchor_seed(deck, g):
+        """Keyed by the deck NAME, so the panel is the same games whatever else the round does.
+        crc32 & 0x1FFFFF gives 2,097,152 slots at a 1,000-game stride; 2e9 + that stays inside
+        uint32, and a slot collision only means two decks share seeds -- different decklists, so
+        different games anyway."""
+        return args.anchor_base + (zlib.crc32(deck.encode()) & 0x1FFFFF) * 1000 + g
+
+    panel = [d.strip() for d in args.anchor_decks.split(",") if d.strip()]
+    work = collections.OrderedDict((d, [args.games, 0]) for d in decks)
+    if eng and panel:
+        for d in panel:
+            work.setdefault(d, [0, 0])[1] = args.anchor_games
+    elif eng and args.anchor_frac:
+        na = int(round(args.games * args.anchor_frac))
+        for d in work:
+            work[d] = [args.games - na, na]
 
     with gzip.open(args.out, "wt") as out:
-        for di, deck in enumerate(decks):
+        for di, (deck, (n_fresh, n_anchor)) in enumerate(work.items()):
             ids = [int(x) for x in open(library.deck_path(deck)) if x.strip()]
             prof = tuning.get(deck, {})
             lm_agent, _sc = make_agent(args.model, deck, ids, prof)
             ref = make_lm_agent(ids, prof, model=None)
             opp = make_lm_agent(ids, prof, model=None)
-            n_anchor = int(round(args.games * args.anchor_frac)) if eng else 0
-            for g in range(args.games):
+            for g in range(n_anchor + n_fresh):
                 lm_seat = g % 2
-                seed, is_anchor = game_seed(di, g, n_anchor)
+                is_anchor = g < n_anchor
+                seed = (anchor_seed(deck, g) if is_anchor
+                        else args.engine_seed_base + di * 1000 + (g - n_anchor))
                 if eng:
                     obs = eng.start(ids, ids, seed, mirror=args.mirror_shuffle)
                 else:
@@ -204,8 +230,11 @@ def main():
                     battle_finish()
                 if gn:
                     per_game[tag].append((gw, gn))
+                    if is_anchor:
+                        per_deck[deck][0] += gw
+                        per_deck[deck][1] += gn
             print("[%2d/%d] %-24s written %6d  (LM wrong %.1f%%)  %.0fs"
-                  % (di + 1, len(decks), deck, st["written"],
+                  % (di + 1, len(work), deck, st["written"],
                      100.0 * st["wrong"] / max(1, st["wrong"] + st["right"]),
                      time.time() - t0), flush=True)
 
@@ -233,6 +262,12 @@ def main():
         note = " (held out)" if tag == "anchor" and args.anchor_holdout else ""
         print("[%s] LM wrong %.2f%% +- %.2f (binomial +- %.2f, %d games / %d decisions)%s"
               % (tag, 100 * p, 100 * se, 100 * se_binom, len(rates), n, note), flush=True)
+    # Per deck too: the panel is fixed, so these line up round to round and can be compared
+    # PAIRED -- which is the whole point, and what an overall mean would throw away.
+    for deck in sorted(per_deck):
+        w, m = per_deck[deck]
+        if m:
+            print("[anchor-deck] %-24s %.2f%%  (%d decisions)" % (deck, 100 * w / m, m), flush=True)
 
 
 if __name__ == "__main__":

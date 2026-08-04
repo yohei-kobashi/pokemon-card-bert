@@ -86,7 +86,12 @@ SHARDS=${SHARDS:-4}
 MIRROR_SCREEN=${MIRROR_SCREEN:-1}
 SCREEN_SEED=${SCREEN_SEED:-1}
 DUAL_FIRST=${DUAL_FIRST:-1}
-ANCHOR_FRAC=${ANCHOR_FRAC:-0.10}
+# A FIXED panel, played every round regardless of which decks the tier targeted, with seeds
+# keyed by the deck NAME. Both matter: keying by the deck's index in the target list made the
+# same deck draw different games whenever the targets changed, and taking the panel from the
+# targets meant a deck leaving the tier stopped being measured.
+ANCHOR_PANEL=${ANCHOR_PANEL:-crustle_stall,alakazam,dragapult,mega_lucario,rockets_honchkrow,ns_zoroark,marnie_grimmsnarl,archaludon,hydrapple,chandelure,trevenant_control,zangoose}
+ANCHOR_GAMES=${ANCHOR_GAMES:-8}
 SEEDED_COLLECT=${SEEDED_COLLECT:-1}
 MIRROR_SO=${MIRROR_SO:-/root/ptcg/repo/data/kaggle_engine_ext/libcg_mirror.so}
 # Collection is NOT the expensive part of a round: 3 decks x 72 games took 5 minutes against a
@@ -277,7 +282,8 @@ print(','.join(pick))
   [ "$SEEDED_COLLECT" = 1 ] && SBASE=$(( 100000 + ROUND * 100000 ))
   PYTHONPATH=cg-lib python3 tools/collect_dagger.py --decks "$TARGETS" \
       --model "hf:$MODEL" --games "$GAMES" --out "$DAG" \
-      --engine-seed-base "$SBASE" --anchor-frac "$ANCHOR_FRAC" --mirror-so "$MIRROR_SO" \
+      --engine-seed-base "$SBASE" --mirror-so "$MIRROR_SO" \
+      --anchor-decks "$ANCHOR_PANEL" --anchor-games "$ANCHOR_GAMES" \
       || { say "collect FAILED -- stopping"; break; }
 
   MIX=$REPO/data/rerank/l6_r$ROUND.jsonl.gz
