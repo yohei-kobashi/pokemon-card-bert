@@ -62,6 +62,13 @@ class MirrorEngine:
         self.lib.DebugDeckIds.restype = ctypes.c_int
         self.lib.DebugDeckIds.argtypes = [ctypes.c_void_p, ctypes.c_int,
                                           ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+        # Only libcg_hidden.so exports this; the plain mirror build does not.
+        self.has_hidden = hasattr(self.lib, "DebugHiddenState")
+        if self.has_hidden:
+            self.lib.DebugHiddenState.restype = ctypes.c_char_p
+            self.lib.DebugHiddenState.argtypes = [ctypes.c_void_p]
+            self.lib.DebugCardDeps.restype = ctypes.c_char_p
+            self.lib.DebugCardDeps.argtypes = []
         self.ptr = None
 
     def _obs(self):
@@ -93,6 +100,28 @@ class MirrorEngine:
         if self.ptr:
             self.lib.BattleFinish(self.ptr)
             self.ptr = None
+
+    def hidden_state(self):
+        """Everything the observation drops: per-card / per-player / per-game effect state.
+
+        Needs the instrumented build (`--out data/kaggle_engine_ext/libcg_hidden.so`). Returns
+        `{"cards": [...], "players": [...], "game": {...}}` with only NON-ZERO fields, grouped
+        H(istory) / T(his turn) / F(uture) / C(ontinual) -- see DebugHiddenState in
+        mirror_export.cpp for what each class means. `{}` if the build lacks the symbol.
+        """
+        import json
+        if not self.has_hidden or not self.ptr:
+            return {}
+        raw = self.lib.DebugHiddenState(self.ptr)
+        return json.loads(raw.decode()) if raw else {}
+
+    def card_deps(self):
+        """`{"attacks": {attackId: ["H:koPreEnemyTurn", ...]}, "skills": {...}}` -- which cards
+        actually READ the past. Static (card database), so no battle needs to be running."""
+        import json
+        if not self.has_hidden:
+            return {"attacks": {}, "skills": {}}
+        return json.loads(self.lib.DebugCardDeps().decode())
 
     def deck_ids(self, player):
         """Current deck order for `player`, top first. Debug/inspection only."""
