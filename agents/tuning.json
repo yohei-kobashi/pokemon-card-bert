@@ -2769,6 +2769,7 @@
   "style": "evolve"
  },
  "ogerpon_mono": {
+  "_deadcards": "AUDITED 2026-08-05. tools/audit_dead_cards.py: 0 dead slots. In game (40 games vs the live field) every card is used except Briar x1 -- and Briar is NOT dead: it was OFFERED in the menu 43 times and played 0, because it is a tech(200) supporter losing to Judge / Lillie's Determination at engine(700). Its window (opponent on exactly 2 Prizes) opened in 15 of 48 games and it sat in hand on 90 turns, so it is reachable. A per-deck rule that played it only when the turn's attack would actually KO -- priced with lm/hidden's live damage -- measured -1.09pt +- 1.52 (t -0.72, 640 paired games) and was REVERTED: the turn's Supporter is worth more as a draw than as one extra Prize.",
   "_note": "scouted 2026-08-05 top-500: 27 teams (5.4%) run this and NONE of our decks was closer than 25%. Canonical list appeared IDENTICAL at ranks 65 and 120 (kigasudayooo / Nghia Tran), both reconstructed 60/60. See docs/meta/leaderboard_top500_2026-08-05.md",
   "_plan": "Mono-attacker turbo. FOUR Pokemon in the whole deck, all Teal Mask Ogerpon ex. Its ability attaches a Basic {G} from hand AND draws, so the deck is 17 Basic {G} + 2 Grow Grass feeding one body; Myriad Leaf Shower is 30 + 30 per Energy on BOTH Actives, so damage scales with the pile it has built. Everything else is draw (Judge / Lillie's / Harlequin), search (Tera Orb finds it -- Ogerpon is Tera), or survivability (Lively Stadium +30 to Basics, Grow Grass +20, Hero's Cape +100, Jumbo Ice Cream heals 80 at 3+ Energy).",
   "arch_mixin": true,
