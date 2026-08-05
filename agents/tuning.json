@@ -1053,7 +1053,12 @@
     1264
    ],
    "support_energy": {
-    "849": 1
+    "849": 1,
+    "861": 1
+   },
+   "support_etype": {
+    "849": 0,
+    "861": 3
    },
    "support_gate": "loose"
   },
