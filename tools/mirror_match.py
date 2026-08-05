@@ -389,14 +389,21 @@ class QwenScorer:
 class HFRerankScorer:
     """Cross-encoder straight from a training checkpoint -- no ONNX export needed to evaluate."""
 
-    def __init__(self, path, maxlen=768):
+    def __init__(self, path, maxlen=0):
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
         self.torch = torch
         self.dev = "cuda" if torch.cuda.is_available() else "cpu"
         self.tok = AutoTokenizer.from_pretrained(path)
+        # LEFT truncation, as in train_rerank and lm/rerank_scorer. The menu is the LAST thing
+        # in the prompt, so right-truncating an overflow deletes the very options being ranked
+        # -- that is [[rerank-prompt-truncation-bug]], which cost 99% of decisions their board.
+        self.tok.truncation_side = "left"
         self.model = AutoModelForSequenceClassification.from_pretrained(path).to(self.dev).eval()
-        self.maxlen = maxlen
+        # Take the limit from the model, not from a constant: ModernBERT allows 8192 and
+        # DeBERTa-v3 only 512, and feeding 768 to the latter is a crash or silent nonsense.
+        lim = int(getattr(self.model.config, "max_position_embeddings", 0) or 0)
+        self.maxlen = maxlen or (min(768, lim) if lim else 768)
         self.n = 0
         self.t = 0.0
 
