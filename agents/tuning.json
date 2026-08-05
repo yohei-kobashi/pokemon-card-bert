@@ -1526,6 +1526,7 @@
   "style": "evolve"
  },
  "mamoswine": {
+  "_deadcards": "Klinklang x1: offered 1,697 times in 3M pool rows, never chosen -- the engine reads a Stage 2 in hand with no Stage 1 on board as an unplayable evolution and never revisits it. Emergency Rotation puts it on the Bench for FREE whenever the opponent has any Stage 2 in play: 140 HP, [CC] 130, one prize. KlinklangL2 takes it whenever the bench has room -- fires 17 times per 40 games, +8.75pt +- 1.44 (t +6.07, 640 paired), 24.4% -> 33.1%.",
   "archetype": "combo",
   "card_roles": {
    "1079": "engine",
@@ -1559,7 +1560,7 @@
    "743": "engine"
   },
   "engine": "v2",
-  "l2": "mamoswine",
+  "l2": "klinklang",
   "main_attackers": [
    283
   ],
@@ -1660,6 +1661,7 @@
   "style": "evolve"
  },
  "mega_abomasnow_sample": {
+  "_deadcards": "Waitress x2 is offered 5,807 times in 3M pool rows and never chosen. A rule that spent it as a SECOND energy attach (only after the turn's attach was gone, only while something was short) fired 13 times per 40 games and measured -1.56pt +- 1.31 (t -1.20, 640 paired). REVERTED: the engine's skip is correct, so the LM learning 'never play Waitress' is learning the right thing.",
   "_migration_note": "engine_v2+ConfigL2 costs ~6pt of self-play vs the old policies.mega_abomasnow (59.0 -> 52.7 at 150 games/opp; lead attack Hammer-lanche 74% -> 39%). ACCEPTED: this deck is `candidate` with no live score, and self-play carries +-8pt anyway, so the alternative -- keeping _engine.py+policies.py alive for one never-submitted deck -- preserves the two-engine trap that caused a whole session of wrong measurements. big=[1046] (win-condition scaling attack only) recovered +2.9 of the 9.2; p05's derived big=[1042,1045,1046] let Kyogre's Riptide take the lead.",
   "archetype": "ramp",
   "card_roles": {
@@ -2769,7 +2771,7 @@
   "style": "evolve"
  },
  "ogerpon_mono": {
-  "_deadcards": "AUDITED 2026-08-05. tools/audit_dead_cards.py: 0 dead slots. In game (40 games vs the live field) every card is used except Briar x1 -- and Briar is NOT dead: it was OFFERED in the menu 43 times and played 0, because it is a tech(200) supporter losing to Judge / Lillie's Determination at engine(700). Its window (opponent on exactly 2 Prizes) opened in 15 of 48 games and it sat in hand on 90 turns, so it is reachable. A per-deck rule that played it only when the turn's attack would actually KO -- priced with lm/hidden's live damage -- measured -1.09pt +- 1.52 (t -0.72, 640 paired games) and was REVERTED: the turn's Supporter is worth more as a draw than as one extra Prize.",
+  "_deadcards": "Briar x1: offered 43 times, played 0. BriarL2 plays it only when the extra Prize ENDS the game (opponent on exactly 2, our attacker Tera, the attack KOs, and prize value + 1 >= our remaining) -- the competitive line, confirmed against Limitless/NAIC 2026 Hydrapple lists. An earlier version that fired on ANY knockout measured -1.09pt +- 1.52 and was wrong about the card. The corrected rule fires ONCE per 40 games, so 640 games cannot validate it (-0.78pt +- 1.54 is noise around zero). KEPT on the card's own logic, not on an A/B: when it fires it is the winning play, and it now appears in training data as a positive label instead of only ever as a negative.",
   "_note": "scouted 2026-08-05 top-500: 27 teams (5.4%) run this and NONE of our decks was closer than 25%. Canonical list appeared IDENTICAL at ranks 65 and 120 (kigasudayooo / Nghia Tran), both reconstructed 60/60. See docs/meta/leaderboard_top500_2026-08-05.md",
   "_plan": "Mono-attacker turbo. FOUR Pokemon in the whole deck, all Teal Mask Ogerpon ex. Its ability attaches a Basic {G} from hand AND draws, so the deck is 17 Basic {G} + 2 Grow Grass feeding one body; Myriad Leaf Shower is 30 + 30 per Energy on BOTH Actives, so damage scales with the pile it has built. Everything else is draw (Judge / Lillie's / Harlequin), search (Tera Orb finds it -- Ogerpon is Tera), or survivability (Lively Stadium +30 to Basics, Grow Grass +20, Hero's Cape +100, Jumbo Ice Cream heals 80 at 3+ Energy).",
   "arch_mixin": true,
@@ -2820,7 +2822,7 @@
    1147
   ],
   "heal_min": 60,
-  "l2": "config",
+  "l2": "briar",
   "line": {
    "bench_target": 1,
    "big": [

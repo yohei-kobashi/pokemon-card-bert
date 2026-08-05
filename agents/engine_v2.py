@@ -3214,6 +3214,102 @@ class MamoswineL2(ComboPolicy):
         return BasePolicy.decide_attack(self, ctx)
 
 
+class _NeverChosenMixin:
+    """Shared helpers for the three cards engine_v2 was measured never to play.
+
+    Fleet scan of 3,000,000 v41 pool rows: of 232 distinct cards ever OFFERED as a play,
+    exactly two were never chosen (Waitress 5,807 offers, Klinklang 1,697) -- and Briar
+    joins them as soon as ogerpon_mono enters the pool (43 offers, 0 plays). A card the
+    heuristic never plays can only ever appear in the training data as a NEGATIVE, so the
+    LM cannot learn the line from imitation no matter how long it trains.
+    """
+
+    def _hand_idx(self, ctx, cid):
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId == cid:
+                return i
+        return None
+
+    def _live_dmg(self, ctx, attack_i):
+        """Damage this attack would really land, via lm/hidden. None when unavailable."""
+        obs = getattr(self, "_raw_obs", None)
+        if not isinstance(obs, dict) or not obs.get("search_begin_input"):
+            return None
+        try:
+            from lm import damage as _dmg, hidden as _hid
+            dec = _hid.read(obs)
+            if dec is None:
+                return None
+            cur = obs["current"]; yi = cur["yourIndex"]
+            me = (cur["players"][yi].get("active") or [None])[0]
+            op = (cur["players"][1 - yi].get("active") or [None])[0]
+            if not me or not op:
+                return None
+            v, _k = _dmg.final_damage(obs, dec, me["serial"], op["serial"],
+                                      ctx.sel.option[attack_i].attackId, yi)
+            return v
+        except Exception:
+            return None
+
+
+class BriarL2(AggroPolicy, _NeverChosenMixin):
+    """Play Briar only on the turn it WINS THE GAME.
+
+    Briar: "only if your opponent has exactly 2 Prize cards remaining. During this turn, if
+    your opponent's Active is Knocked Out by damage from an attack used by your TERA
+    Pokemon, take 1 more Prize card." Competitive lists (NAIC 2026 Hydrapple) run it as a
+    finisher: it turns a 2-prize KO into 3, so a player sitting on 3 Prizes wins on the spot.
+
+    A first attempt played it on ANY knockout and measured -1.09pt +- 1.52 over 640 paired
+    games -- it was spending the turn's Supporter, worth a Judge or a Lillie's, to gain one
+    Prize that did not end anything. The condition that was missing is the whole card: only
+    play it when the extra Prize is the LAST one.
+    """
+    _BRIAR = 1201
+    ladder = ("rule_briar",)
+
+    def rule_briar(self, ctx):
+        if ctx.state.supporterPlayed or not ctx.plays or not ctx.attacks:
+            return None
+        idx = self._hand_idx(ctx, self._BRIAR)
+        if idx is None:
+            return None
+        me_a, opp = ctx.me.active, ctx.opp.active
+        if me_a is None or opp is None:
+            return None
+        if not getattr(me_a.card, "tera", False):      # Briar only pays for a Tera attacker
+            return None
+        take = _prize_value(opp.pk) + 1
+        if take < ctx.me.prizes_left:                  # the extra Prize must END it
+            return None
+        best = max((self._live_dmg(ctx, i) or 0) for i in ctx.attacks)
+        return [idx] if best >= opp.hp > 0 else None
+
+
+class KlinklangL2(ComboPolicy, _NeverChosenMixin):
+    """Klinklang's Emergency Rotation is a FREE body -- take it whenever it is offered.
+
+    "Once during your turn, if this Pokemon is in your hand and your opponent has any Stage 2
+    Pokemon in play, you may put this Pokemon onto your Bench." A 140 HP Stage 2 that costs
+    no Supporter, no Item and no evolution step, and attacks for [CC] 130. It is worth ONE
+    prize, so the spare-ex concern that governs benching Megas does not apply here
+    ([[spare-ex-bench-guard]]).
+
+    The engine passed on it 1,697 times because it reads as a Stage 2 in hand with no
+    matching Stage 1 on board -- an unplayable evolution -- and its own legality never gets
+    re-examined.
+    """
+    _KLINKLANG = 167
+    ladder = ("rule_klinklang",)
+
+    def rule_klinklang(self, ctx):
+        if not ctx.plays or len(ctx.me.bench) >= (ctx.me_ps.benchMax or 5):
+            return None
+        idx = self._hand_idx(ctx, self._KLINKLANG)
+        return [idx] if idx is not None else None
+
+
 class DudunsparceBoxL2(BeatdownPolicy):
     """dudunsparce_box — pay the retreat that arms Gale Thrust.
 
@@ -5750,6 +5846,7 @@ _PERDECK = {
     "rockets_mewtwo": RocketsMewtwoL2, "mamoswine": MamoswineL2,
     "marnie_grimmsnarl": MarnieGrimmsnarlL2, "mega_lucario": MegaLucarioL2, "cynthia_garchomp": CynthiaGarchompL2, "mega_feraligatr": MegaFeraligatrL2, "omatsuri": OmatsuriL2, "ns_zoroark": ZoroarkL2, "ethan_hooh": EthanHoohL2, "manectric": ManectricL2, "mega_venusaur": MegaVenusaurL2, "mega_gardevoir": MegaGardevoirL2, "mega_diancie": MegaDiancieL2, "black_kyurem": BlackKyuremL2, "mega_latias": MegaLatiasL2, "mega_zygarde": MegaZygardeL2, "cubchoo_control": CubchooL2, "slowking_combo": SlowkingComboL2, "slowking_hybrid": HybridSlowkingL2, "config": ConfigL2,
     "metagross": MetagrossL2, "dudunsparce_box": DudunsparceBoxL2,
+    "briar": BriarL2, "klinklang": KlinklangL2,
 }
 _ARCHETYPES = {
     "aggro": AggroPolicy,
