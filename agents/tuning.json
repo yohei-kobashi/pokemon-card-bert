@@ -835,17 +835,17 @@
     "112": 7
    }
   },
+  "live": {
+   "last_submitted": "2026-07-28",
+   "note": "2026-07-28 FIRST LM-path submission ever: rr_v37_dragapult.tar.gz, gte-reranker v37 (149M cross-encoder, glossary=none/remaining/shuffled DECK, INT8 vocab-pruned ONNX). Submitted to verify SPEED on real hardware, not strength -- self-play never measured the LM on this deck, and on the decks it did measure the LM is below engine_v2 live-weighted. Measured on the real tarball: bank max 154s/600s over 6 games, 89 decisions max, projection 204s. No engine_v2 dragapult submission exists, so there is no baseline to compare the rating against.",
+   "submissions": 1
+  },
   "residual_cards": [
    1120,
    1240
   ],
   "status": "candidate",
-  "style": "spread",
-  "live": {
-   "last_submitted": "2026-07-28",
-   "submissions": 1,
-   "note": "2026-07-28 FIRST LM-path submission ever: rr_v37_dragapult.tar.gz, gte-reranker v37 (149M cross-encoder, glossary=none/remaining/shuffled DECK, INT8 vocab-pruned ONNX). Submitted to verify SPEED on real hardware, not strength -- self-play never measured the LM on this deck, and on the decks it did measure the LM is below engine_v2 live-weighted. Measured on the real tarball: bank max 154s/600s over 6 games, 89 decisions max, projection 204s. No engine_v2 dragapult submission exists, so there is no baseline to compare the rating against."
-  }
+  "style": "spread"
  },
  "dragapult_blaziken": {
   "archetype": "spread",
@@ -989,6 +989,93 @@
   ],
   "status": "candidate",
   "style": "spread"
+ },
+ "dudunsparce_box": {
+  "_note": "scouted 2026-08-05 top-500: the cluster that holds ranks 6 and 9, whose 60/60 reconstructions are IDENTICAL. 13 teams matched nothing of ours above 41%, and a further 14 classified as mega_lopunny at only 59-65% carry the same engine -- so our mega_lopunny is a DIFFERENT deck from the live one. See docs/meta/leaderboard_top500_2026-08-05.md",
+  "_plan": "Dudunsparce is a REUSABLE draw engine: its ability draws 3 and then shuffles itself back into the deck, so the Dunsparce line is dug up again and again (Buddy-Buddy Poffin / Poke Pad / Ultra Ball all fetch it). The payoff is Mega Lopunny ex's Gale Thrust -- 60, +170 MORE if it moved from the Bench to the Active Spot this turn, i.e. 230 for one Energy -- which is why Air Balloon x3 (-2 retreat) is in here: retreat something cheap, drop Lopunny in, swing. Mega Froslass ex is the second angle, 50 per card in the opponent's HAND. Mist Energy protects the Mega from attack EFFECTS and Battle Cage protects the bench from spread.",
+  "_tuning": "CONFIG-ONLY pass 1, measured. Gale Thrust landed 60 rather than 230 on 95.2% of its 83 uses (the +170 needs Lopunny to have moved Bench->Active THAT turn, and the engine parks it Active instead), while Mega Froslass ex's Resentful Refrain averaged 308 damage over its 6 uses. The engine already prices 'for each card in your opponent's hand' correctly (engine_v2:_ctx_each_count), so this is a PRIORITY problem, not a valuation one: Froslass is now the primary focus and Lopunny the secondary. PASS 2: the L2 pivot beat config-only by +4.37pt +- 1.96 (t +2.23, 640 games) but the mechanism check said the Gale Thrust window only went 3.5% -> 7.4%, so the gain was NOT the pivot. The real blocker is upstream: a benched Lopunny never gets energy, so there is nothing to pivot into. line.support_energy arms it on the bench (engine_v2:_support_attach), which is what that key exists for.",
+  "arch_mixin": true,
+  "archetype": "midrange",
+  "bench_target": 4,
+  "card_roles": {
+   "1086": "engine",
+   "1087": "filler",
+   "11": "fuel",
+   "1121": "engine",
+   "1122": "engine",
+   "1152": "engine",
+   "1174": "tech",
+   "1182": "tech",
+   "1225": "engine",
+   "1227": "engine",
+   "1229": "engine",
+   "1264": "tech",
+   "13": "fuel",
+   "174": "engine",
+   "3": "fuel",
+   "305": "engine",
+   "66": "engine",
+   "848": "line",
+   "849": "win",
+   "860": "line",
+   "861": "win"
+  },
+  "draw_supporters": [
+   1227,
+   1225
+  ],
+  "draw_threshold": 5,
+  "engine": "v2",
+  "gust_cards": [
+   1182
+  ],
+  "hand_reset_cards": [
+   1227,
+   1087
+  ],
+  "heal_cards": [
+   1229
+  ],
+  "l2": "dudunsparce_box",
+  "line": {
+   "bench_target": 4,
+   "big": [
+    861,
+    849
+   ],
+   "discard_fuel": [],
+   "focus": [
+    861,
+    849
+   ],
+   "need": {
+    "849": 1,
+    "861": 1
+   },
+   "stadiums": [
+    1264
+   ],
+   "support_energy": {
+    "849": 1
+   },
+   "support_gate": "loose"
+  },
+  "main_attackers": [
+   861,
+   849
+  ],
+  "mega_heal_cards": [
+   1229
+  ],
+  "search_items": [
+   1086,
+   1121,
+   1152,
+   1122
+  ],
+  "setup_by_role": true,
+  "status": "candidate",
+  "style": "evolve"
  },
  "ethan_hooh": {
   "archetype": "ramp",
@@ -2382,31 +2469,34 @@
  "mega_starmie": {
   "archetype": "spread",
   "card_roles": {
-   "1031": "win",
-   "861": "win",
    "1030": "line",
-   "860": "line",
-   "664": "line",
-   "665": "line",
-   "666": "tech",
-   "117": "tech",
-   "414": "tech",
+   "1031": "win",
    "1086": "engine",
    "1121": "engine",
    "1122": "engine",
    "1145": "engine",
+   "1159": "tech",
+   "117": "tech",
+   "1182": "tech",
+   "1189": "engine",
+   "1197": "tech",
+   "1224": "engine",
    "1225": "engine",
    "1227": "engine",
    "1229": "engine",
-   "1189": "engine",
-   "1224": "engine",
-   "1182": "tech",
-   "1197": "tech",
    "1262": "tech",
-   "1159": "tech",
    "3": "fuel",
-   "6": "fuel"
+   "414": "tech",
+   "6": "fuel",
+   "664": "line",
+   "665": "line",
+   "666": "tech",
+   "860": "line",
+   "861": "win"
   },
+  "draw_supporters": [
+   1224
+  ],
   "engine": "v2",
   "l2": "config",
   "line": {
@@ -2420,10 +2510,10 @@
     861
    ],
    "need": {
-    "1031": 2,
-    "861": 2,
     "1030": 2,
-    "860": 2
+    "1031": 2,
+    "860": 2,
+    "861": 2
    },
    "stadiums": [
     1262
@@ -2437,8 +2527,6 @@
     "861": 3
    }
   },
-  "status": "candidate",
-  "style": "spread",
   "search_items": [
    1121,
    1122,
@@ -2446,9 +2534,8 @@
    1145,
    1189
   ],
-  "draw_supporters": [
-   1224
-  ]
+  "status": "candidate",
+  "style": "spread"
  },
  "mega_venusaur": {
   "archetype": "ramp",
@@ -2680,6 +2767,88 @@
   "status": "candidate",
   "style": "evolve"
  },
+ "ogerpon_mono": {
+  "_note": "scouted 2026-08-05 top-500: 27 teams (5.4%) run this and NONE of our decks was closer than 25%. Canonical list appeared IDENTICAL at ranks 65 and 120 (kigasudayooo / Nghia Tran), both reconstructed 60/60. See docs/meta/leaderboard_top500_2026-08-05.md",
+  "_plan": "Mono-attacker turbo. FOUR Pokemon in the whole deck, all Teal Mask Ogerpon ex. Its ability attaches a Basic {G} from hand AND draws, so the deck is 17 Basic {G} + 2 Grow Grass feeding one body; Myriad Leaf Shower is 30 + 30 per Energy on BOTH Actives, so damage scales with the pile it has built. Everything else is draw (Judge / Lillie's / Harlequin), search (Tera Orb finds it -- Ogerpon is Tera), or survivability (Lively Stadium +30 to Basics, Grow Grass +20, Hero's Cape +100, Jumbo Ice Cream heals 80 at 3+ Energy).",
+  "arch_mixin": true,
+  "archetype": "aggro",
+  "bench_target": 1,
+  "card_roles": {
+   "1": "fuel",
+   "1094": "engine",
+   "1118": "engine",
+   "1119": "engine",
+   "1120": "tech",
+   "1122": "engine",
+   "1127": "engine",
+   "1147": "tech",
+   "1159": "tech",
+   "1182": "tech",
+   "1201": "tech",
+   "1213": "engine",
+   "1221": "tech",
+   "1223": "engine",
+   "1227": "engine",
+   "1251": "tech",
+   "18": "fuel",
+   "96": "win"
+  },
+  "disrupt_cards": [
+   1120
+  ],
+  "draw_supporters": [
+   1213,
+   1227,
+   1223
+  ],
+  "draw_threshold": 5,
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "gust_cards": [
+   1182
+  ],
+  "hand_reset_cards": [
+   1213,
+   1227,
+   1223
+  ],
+  "heal_cards": [
+   1147
+  ],
+  "heal_min": 60,
+  "l2": "config",
+  "line": {
+   "bench_target": 1,
+   "big": [
+    96
+   ],
+   "discard_fuel": [],
+   "focus": [
+    96
+   ],
+   "need": {
+    "96": 3
+   },
+   "stadiums": [
+    1251
+   ]
+  },
+  "main_attackers": [
+   96
+  ],
+  "search_items": [
+   1127,
+   1094,
+   1122,
+   1119,
+   1118
+  ],
+  "setup_by_role": true,
+  "status": "candidate",
+  "style": "basic"
+ },
  "okidogi_box": {
   "archetype": "ramp",
   "card_roles": {
@@ -2853,6 +3022,7 @@
   "archetype": "aggro",
   "bench_target": 4,
   "card_roles": {
+   "1077": "engine",
    "1097": "engine",
    "1109": "engine",
    "1121": "engine",
@@ -2870,8 +3040,7 @@
    "463": "line",
    "473": "line",
    "474": "win",
-   "891": "win",
-   "1077": "engine"
+   "891": "win"
   },
   "draw_supporters": [
    1216,

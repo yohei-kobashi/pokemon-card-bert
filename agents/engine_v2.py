@@ -3211,6 +3211,69 @@ class MamoswineL2(ComboPolicy):
         return BasePolicy.decide_attack(self, ctx)
 
 
+class DudunsparceBoxL2(BeatdownPolicy):
+    """dudunsparce_box — pay the retreat that arms Gale Thrust.
+
+    Mega Lopunny ex's Gale Thrust is 60, or **230** if it moved from the Bench to the Active
+    Spot THAT turn. Measured on the config-only build: 79 of 83 Gale Thrusts (95.2%) landed
+    60, because BasePolicy.decide_retreat returns early whenever the active can attack -- so
+    Lopunny was promoted once, then swung at 26% power every turn afterwards. Air Balloon x3
+    (-2 retreat) is in the live list precisely to make that pivot free, and nothing in the
+    generic pilot knows to spend it.
+
+    Two rules, both narrow:
+      pivot    retreat into a benched, energised Lopunny when the retreat strands NOTHING
+               (active carries no energy -- the Air-Balloon case), and remember the turn.
+      finish   while that window is open, take Gale Thrust over Spiky Hopper. `_opt_atk_dmg`
+               reads the printed 60 and 160 and would otherwise pick the weaker attack; the
+               window is not in the observation (Card::turnState.benchToActive is not
+               exported), so the pilot has to remember its own move.
+    """
+    _LOPUNNY, _FROSLASS = 849, 861
+    _GALE, _SPIKY = 1225, 1226
+    _AIR_BALLOON = 1174
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self._pivot_turn = None
+
+    def _bench_lopunny(self, ctx):
+        return next((v for v in ctx.me.bench
+                     if v.id == self._LOPUNNY and v.energy_count >= 1), None)
+
+    def _window_open(self, ctx):
+        a = ctx.me.active
+        return (a is not None and a.id == self._LOPUNNY
+                and self._pivot_turn == ctx.state.turn)
+
+    def decide_retreat(self, ctx):
+        if ctx.retreat_idx is not None and not ctx.state.retreated:
+            a = ctx.me.active
+            # `energy_count == 0` is the whole safety condition: the engine only offers
+            # retreat when it is payable, and with nothing attached there is nothing to
+            # strand. That is exactly the Air-Balloon board this deck plays toward.
+            if (a is not None and a.id != self._LOPUNNY and a.energy_count == 0
+                    and self._bench_lopunny(ctx) is not None):
+                self._pivot_turn = ctx.state.turn
+                return [ctx.retreat_idx]
+        return BeatdownPolicy.decide_retreat(self, ctx)
+
+    def decide_active(self, ctx, mode="setup"):
+        # the pivot only pays if the promotion actually picks Lopunny
+        if self._pivot_turn == ctx.state.turn:
+            for i, o in enumerate(ctx.sel.option):
+                if self._opt_pk_id(ctx, o) == self._LOPUNNY:
+                    return [i]
+        return BeatdownPolicy.decide_active(self, ctx, mode)
+
+    def decide_attack(self, ctx):
+        if ctx.attacks and self._window_open(ctx):
+            for i in ctx.attacks:
+                if ctx.sel.option[i].attackId == self._GALE:
+                    return [i]
+        return BeatdownPolicy.decide_attack(self, ctx)
+
+
 class MetagrossL2(ComboPolicy):
     """Steven's Metagross ex (641) energy engine powering a Metal Stomp 200 toolbox.
     200 is fine any time -> no withholding; L2 just prioritises the engine setup."""
@@ -5665,7 +5728,7 @@ _PERDECK = {
     "alakazam": AlakazamL2, "doublade": DoubladeL2, "hydrapple": HydrappleL2,
     "rockets_mewtwo": RocketsMewtwoL2, "mamoswine": MamoswineL2,
     "marnie_grimmsnarl": MarnieGrimmsnarlL2, "mega_lucario": MegaLucarioL2, "cynthia_garchomp": CynthiaGarchompL2, "mega_feraligatr": MegaFeraligatrL2, "omatsuri": OmatsuriL2, "ns_zoroark": ZoroarkL2, "ethan_hooh": EthanHoohL2, "manectric": ManectricL2, "mega_venusaur": MegaVenusaurL2, "mega_gardevoir": MegaGardevoirL2, "mega_diancie": MegaDiancieL2, "black_kyurem": BlackKyuremL2, "mega_latias": MegaLatiasL2, "mega_zygarde": MegaZygardeL2, "cubchoo_control": CubchooL2, "slowking_combo": SlowkingComboL2, "slowking_hybrid": HybridSlowkingL2, "config": ConfigL2,
-    "metagross": MetagrossL2,
+    "metagross": MetagrossL2, "dudunsparce_box": DudunsparceBoxL2,
 }
 _ARCHETYPES = {
     "aggro": AggroPolicy,
