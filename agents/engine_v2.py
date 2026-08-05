@@ -3287,6 +3287,82 @@ class BriarL2(AggroPolicy, _NeverChosenMixin):
         return [idx] if best >= opp.hp > 0 else None
 
 
+class WaitressL2(BasePolicy, _NeverChosenMixin):
+    """Waitress only when one Basic Energy UNLOCKS A BIGGER ATTACK on the Active.
+
+    "Look at the top 6 cards of your deck and attach a Basic Energy card you find there to 1
+    of your Pokemon." It is a second attach in a turn, and the engine never chose it in 5,807
+    offers because it is neither draw nor search.
+
+    A first rule fired whenever anything on board was unready -- 13 times per 40 games, and
+    -1.56pt +- 1.31, because most of those turns the extra energy unlocked nothing and the
+    Supporter would have been a Lillie's. The condition that makes the card worth a Supporter
+    is narrower: the ACTIVE must be exactly ONE energy short of an attack that hits harder
+    than anything it can already use. In this deck that is the real ladder -- Mega Abomasnow
+    ex goes from Hammer-lanche at [WW] to Frost Barrier 200 at [WWW].
+
+    Shortfall comes from lm/hidden.insufficient_energy (a port of the engine's own
+    GameUtil.h:InsufficientEnergyCount, diffed against it over 272,128 pairs) and the damage
+    from lm/damage.final_damage, because Hammer-lanche's printed damage is 0 and says nothing.
+    """
+    _WAITRESS = 1235
+    ladder = ("rule_waitress",)
+
+    def choose_sub(self, ctx):
+        """Put the Waitress energy on the ACTIVE.
+
+        Measured: 42.3% of the attaches landed on the BENCH, which throws away the entire
+        premise -- the rule fires because the ACTIVE is one energy short of a bigger attack.
+        ATTACH_TO falls through to decide_acquire, which ranks bodies generically and does
+        not know why this energy was fetched.
+        """
+        from cg.api import SelectContext
+        # ATTACH_FROM is the POKEMON pick (`card:c723@ACTIVE0` / `card:c721@BENCH0`);
+        # ATTACH_TO is the energy card pick out of LOOKING. The names read backwards, and
+        # overriding the wrong one changed nothing at all -- the A/B came back byte-identical.
+        if ctx.sel.context == SelectContext.ATTACH_FROM:
+            for i, o in enumerate(ctx.sel.option):
+                if o.playerIndex == ctx.mi and o.area == AreaType.ACTIVE:
+                    return [i]
+        return BasePolicy.choose_sub(self, ctx)
+
+    def rule_waitress(self, ctx):
+        if ctx.state.supporterPlayed or not ctx.plays or not ctx.state.energyAttached:
+            return None                                # the free attach is still available
+        idx = self._hand_idx(ctx, self._WAITRESS)
+        if idx is None:
+            return None
+        obs = getattr(self, "_raw_obs", None)
+        if not isinstance(obs, dict) or not obs.get("search_begin_input"):
+            return None
+        try:
+            from lm import damage as _dmg, hidden as _hid, vocab as _v
+            dec = _hid.read(obs)
+            if dec is None:
+                return None
+            cur = obs["current"]; yi = cur["yourIndex"]
+            me = (cur["players"][yi].get("active") or [None])[0]
+            op = (cur["players"][1 - yi].get("active") or [None])[0]
+            if not me or not op:
+                return None
+            card = _v._CARDS.get(me["id"])
+            now = nxt = 0
+            for aid in ((card.attacks if card else None) or []):
+                short = _hid.insufficient_energy(dec, obs, me["serial"], aid)
+                if short is None or short > 1:
+                    continue
+                v, _k = _dmg.final_damage(obs, dec, me["serial"], op["serial"], aid, yi)
+                if v is None:
+                    continue
+                if short == 0:
+                    now = max(now, v)
+                else:
+                    nxt = max(nxt, v)
+            return [idx] if nxt > now else None
+        except Exception:
+            return None
+
+
 class KlinklangL2(ComboPolicy, _NeverChosenMixin):
     """Klinklang's Emergency Rotation is a FREE body -- take it whenever it is offered.
 
@@ -5846,7 +5922,7 @@ _PERDECK = {
     "rockets_mewtwo": RocketsMewtwoL2, "mamoswine": MamoswineL2,
     "marnie_grimmsnarl": MarnieGrimmsnarlL2, "mega_lucario": MegaLucarioL2, "cynthia_garchomp": CynthiaGarchompL2, "mega_feraligatr": MegaFeraligatrL2, "omatsuri": OmatsuriL2, "ns_zoroark": ZoroarkL2, "ethan_hooh": EthanHoohL2, "manectric": ManectricL2, "mega_venusaur": MegaVenusaurL2, "mega_gardevoir": MegaGardevoirL2, "mega_diancie": MegaDiancieL2, "black_kyurem": BlackKyuremL2, "mega_latias": MegaLatiasL2, "mega_zygarde": MegaZygardeL2, "cubchoo_control": CubchooL2, "slowking_combo": SlowkingComboL2, "slowking_hybrid": HybridSlowkingL2, "config": ConfigL2,
     "metagross": MetagrossL2, "dudunsparce_box": DudunsparceBoxL2,
-    "briar": BriarL2, "klinklang": KlinklangL2,
+    "briar": BriarL2, "waitress": WaitressL2, "klinklang": KlinklangL2,
 }
 _ARCHETYPES = {
     "aggro": AggroPolicy,

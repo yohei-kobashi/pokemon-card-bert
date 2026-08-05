@@ -1661,7 +1661,7 @@
   "style": "evolve"
  },
  "mega_abomasnow_sample": {
-  "_deadcards": "Waitress x2 is offered 5,807 times in 3M pool rows and never chosen. A rule that spent it as a SECOND energy attach (only after the turn's attach was gone, only while something was short) fired 13 times per 40 games and measured -1.56pt +- 1.31 (t -1.20, 640 paired). REVERTED: the engine's skip is correct, so the LM learning 'never play Waitress' is learning the right thing.",
+  "_deadcards": "Waitress x4: offered 5,807 times across 3M pool rows and never chosen. WaitressL2 plays it only when the ACTIVE is exactly one energy short of an attack that hits HARDER than anything it can already use -- in this deck the real ladder, [WW] Hammer-lanche -> [WWW] Frost Barrier 200 -- and forces the attach onto the Active. Shortfall from lm/hidden.insufficient_energy, damage from lm/damage.final_damage (Hammer-lanche's printed damage is 0). Measured over 640 paired games at each step: loose gate (anything on board unready) -1.56pt +- 1.31; user's gate (one energy unlocks a bigger attack) +0.16pt +- 1.48; + forcing the attach onto the Active +0.94pt +- 1.52 (t +0.62). ADOPTED at the user's call: the harm is gone, the sign is right, and Waitress now reaches the training data as a positive label instead of only ever as a negative.",
   "_migration_note": "engine_v2+ConfigL2 costs ~6pt of self-play vs the old policies.mega_abomasnow (59.0 -> 52.7 at 150 games/opp; lead attack Hammer-lanche 74% -> 39%). ACCEPTED: this deck is `candidate` with no live score, and self-play carries +-8pt anyway, so the alternative -- keeping _engine.py+policies.py alive for one never-submitted deck -- preserves the two-engine trap that caused a whole session of wrong measurements. big=[1046] (win-condition scaling attack only) recovered +2.9 of the 9.2; p05's derived big=[1042,1045,1046] let Kyogre's Riptide take the lead.",
   "archetype": "ramp",
   "card_roles": {
@@ -1676,7 +1676,7 @@
    "723": "win"
   },
   "engine": "v2",
-  "l2": "config",
+  "l2": "waitress",
   "line": {
    "big": [
     1046
