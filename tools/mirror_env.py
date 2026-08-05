@@ -69,6 +69,10 @@ class MirrorEngine:
             self.lib.DebugHiddenState.argtypes = [ctypes.c_void_p]
             self.lib.DebugCardDeps.restype = ctypes.c_char_p
             self.lib.DebugCardDeps.argtypes = []
+            self.lib.DebugCalcDamage.restype = ctypes.c_char_p
+            self.lib.DebugCalcDamage.argtypes = [ctypes.c_void_p] + [ctypes.c_int] * 4
+            self.lib.DebugRetreatCost.restype = ctypes.c_int
+            self.lib.DebugRetreatCost.argtypes = [ctypes.c_void_p, ctypes.c_int]
         self.ptr = None
 
     def _obs(self):
@@ -114,6 +118,17 @@ class MirrorEngine:
             return {}
         raw = self.lib.DebugHiddenState(self.ptr)
         return json.loads(raw.decode()) if raw else {}
+
+    def calc_damage(self, attacker_serial, target_serial, base, attack_id):
+        """The engine's own CalcDamage for one triple -- the oracle lm/hidden.py is diffed
+        against. Instrumented build only."""
+        import json
+        raw = self.lib.DebugCalcDamage(self.ptr, attacker_serial, target_serial, base, attack_id)
+        return json.loads(raw.decode()) if raw else None
+
+    def retreat_cost(self, serial):
+        """The engine's own State::retreatCost. Instrumented build only."""
+        return self.lib.DebugRetreatCost(self.ptr, serial)
 
     def card_deps(self):
         """`{"attacks": {attackId: ["H:koPreEnemyTurn", ...]}, "skills": {...}}` -- which cards

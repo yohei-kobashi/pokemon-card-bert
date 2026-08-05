@@ -160,7 +160,7 @@ def _need_energy(cid, attached):
     return min(shorts) if shorts else None
 
 
-def _board_facts(p, obs=None, pi=None):
+def _board_facts(p, obs=None, pi=None, dec=None):
     """` need:N rt:N` for one in-play Pokemon -- absent from v37 prompts entirely.
 
     `rt` is the LIVE retreat cost when the observation is available, not the card's printed one.
@@ -176,7 +176,10 @@ def _board_facts(p, obs=None, pi=None):
     if need is not None:
         out.append("need:%d" % need)
     rt = None
-    if obs is not None and pi is not None:
+    if dec is not None:                  # exact: the engine's own arithmetic (lm/hidden.py)
+        from lm import hidden as _hidden
+        rt = _hidden.retreat_cost(dec, p.get("serial"))
+    if rt is None and obs is not None and pi is not None:
         rt = costs.effective_retreat_cost(obs, pi, p)
     if rt is None:                       # post-hoc rendering with no observation to read
         c = vocab._CARDS.get(cid)
@@ -186,7 +189,7 @@ def _board_facts(p, obs=None, pi=None):
     return (" " + " ".join(out)) if out else ""
 
 
-def _pk(p, board_facts=False, obs=None, pi=None):
+def _pk(p, board_facts=False, obs=None, pi=None, extra=None, dec=None):
     if not p:
         return "-"
     # '*' = appeared THIS turn (history-derived: can't evolve yet; some effects care)
@@ -200,16 +203,18 @@ def _pk(p, board_facts=False, obs=None, pi=None):
     if tools:                                   # tool CARDS (Cape/Belt change HP/damage)
         s += "|" + ",".join(vocab.card_tok(t) for t in tools)
     if board_facts:
-        s += _board_facts(p, obs, pi)
+        s += _board_facts(p, obs, pi, dec)
+    if extra:
+        s += extra.get(p.get("serial"), "")
     return s
 
 
-def _side(pl, me, board_facts=False, obs=None, pi=None):
+def _side(pl, me, board_facts=False, obs=None, pi=None, extra=None, dec=None):
     active = (pl.get("active") or [None])[0]
     bench = [b for b in (pl.get("bench") or []) if b]
-    s = f"A[{_pk(active, board_facts, obs, pi)}]"
+    s = f"A[{_pk(active, board_facts, obs, pi, extra, dec)}]"
     if bench:
-        s += " B[" + ",".join(_pk(b, board_facts, obs, pi) for b in bench) + "]"
+        s += " B[" + ",".join(_pk(b, board_facts, obs, pi, extra, dec) for b in bench) + "]"
     s += f" pz{len(pl.get('prize') or [])} dk{pl.get('deckCount')} bm{pl.get('benchMax')}"
     if me:                                          # my hand CONTENTS (tokens)
         s += f" H[{_tok_multiset([h['id'] for h in (pl.get('hand') or [])])}]"
@@ -225,7 +230,12 @@ def _side(pl, me, board_facts=False, obs=None, pi=None):
     return s
 
 
-def render_state(obs, deck_name=None, board_facts=False, identify="both"):
+def render_state(obs, deck_name=None, board_facts=False, identify="both", hidden_facts=False):
+    """``hidden_facts`` adds the engine's live damage model -- ``dmg:+N`` on our attacker,
+    ``tk:+N`` / ``tk:x0`` / ``fx:x`` on what it would hit. Those come from lm/hidden.py, which
+    decodes the state blob the official library already puts in the observation; nothing is
+    inferred from card text. Rendered only where non-default, so the cost is ~0 on the ~82% of
+    decisions with nothing modified. See [[hidden-effect-state-audit]]."""
     cur = obs["current"]
     yi = cur["yourIndex"]
     me, op = cur["players"][yi], cur["players"][1 - yi]
@@ -233,9 +243,17 @@ def render_state(obs, deck_name=None, board_facts=False, identify="both"):
     sd = f" stad:{vocab.card_tok(stad[0]['id'])}" if stad else ""
     flags = "".join(f for f, k in (("E", "energyAttached"), ("S", "supporterPlayed"),
                                    ("R", "retreated"), ("M", "stadiumPlayed")) if cur.get(k))
+    extra, dec = {}, None
+    if hidden_facts:
+        from lm import hidden as _hidden
+        try:
+            dec = _hidden.read(obs)
+            extra = _hidden.board_extra(obs, dec) if dec else {}
+        except Exception:
+            extra, dec = {}, None
     return (f"T{cur['turn']}.{cur['turnActionCount']}"
-            f"{('/' + flags) if flags else ''} ME {_side(me, True, board_facts, obs, yi)} "
-            f"| OP {_side(op, False, board_facts, obs, 1 - yi)}{sd}{_identify(obs, yi, None if identify == 'op' else deck_name)}")
+            f"{('/' + flags) if flags else ''} ME {_side(me, True, board_facts, obs, yi, extra, dec)} "
+            f"| OP {_side(op, False, board_facts, obs, 1 - yi, extra, dec)}{sd}{_identify(obs, yi, None if identify == 'op' else deck_name)}")
 
 
 def _identify(obs, yi, deck_name=None):
@@ -482,7 +500,8 @@ def render_my_deck(deck_ids, obs=None, mode="static", shuffle=False, roles=None)
 
 def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
                         deck_mode="static", deck_shuffle=False, roles=None,
-                        board_facts=False, identify="both", menu_dedup=False):
+                        board_facts=False, identify="both", menu_dedup=False,
+                        hidden_facts=False):
     """STATELESS prompt: current board only, no episode history. Self-contained =
     RULES glossary (see glossary_ids: our full deck first for cache-stability when
     deck_ids is given, else legacy visible-only) + our own deck identity + full board
@@ -508,7 +527,7 @@ def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
     mine = render_my_deck(deck_ids, obs, deck_mode, deck_shuffle, roles)
     return (head + (mine + " " if mine else "")
             + render_state(obs, deck_name, board_facts=board_facts,
-                           identify=identify)
+                           identify=identify, hidden_facts=hidden_facts)
             + " || " + render_options(obs, menu_dedup))
 
 
