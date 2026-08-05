@@ -53,6 +53,23 @@ PROMPT_FMT = dict(glossary="none", deck_mode="roles", deck_shuffle=False,
                   board_facts=True, identify="op", menu_dedup=True)
 PROMPT_FMT_V37 = dict(glossary="none", deck_mode="remaining", deck_shuffle=True)
 
+# v41 (2026-08-05): everything v40 has, plus the engine's hidden effect state -- live damage
+# with a KO marker on each attack option, the post-attach `need` on each attach option, the
+# incoming threat on our Active, and the identity of Special Energies whose effect persists.
+# See [[hidden-state-from-blob]]; +9.08 tokens/decision measured over 46,377 decisions.
+#
+# PROMPT_FMT IS DELIBERATELY NOT THIS YET. Every live checkpoint was trained on v40, and the
+# screen renders with PROMPT_FMT -- flipping it here would score v40 models on a format they
+# have never seen and silently invalidate every paired comparison in flight. The BASE POOL is
+# generated as v41 (build_rerank --pfmt v41) so the data accumulates; PROMPT_FMT moves only
+# once the pool has been pruned to v41 and a checkpoint is trained on it.
+PROMPT_FMT_V41 = dict(PROMPT_FMT, hidden_facts=True)
+
+# Stamped on every pool row by build_rerank so the two can be told apart -- and so the old ones
+# can be deleted -- without guessing from the text. Rows written before this existed have no
+# `pfmt` key at all, which is exactly what identifies them.
+PROMPT_VERSIONS = {"current": "v40", "v41": "v41"}
+
 
 # --- matched-sampling target (Stage A) --------------------------------------------
 # rl_ratings.expected_wr is measured from engine_v2 vs engine_v2, so it says what the DECK

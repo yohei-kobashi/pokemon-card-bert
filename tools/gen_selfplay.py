@@ -247,15 +247,21 @@ def _plausible_legal(sel, choice, obs, rng, agent):
     return [rng.choice(sorted(pool))]
 
 
-def _clean_obs(obs, lean):
+def _clean_obs(obs, lean, keep_blob=False):
     """Copy of obs stripped of fields not useful for training.
 
-    Always drops ``search_begin_input`` (the search-API blob). With ``lean``,
-    also drops None-valued keys inside each select option (they dominate the
+    Drops ``search_begin_input`` (the search-API blob) UNLESS ``keep_blob``. The v41 prompt
+    decodes the engine's hidden effect state out of that blob (lm/hidden.py), so a tag generated
+    without it renders v41 as if nothing were modified -- silently, since every fact is optional.
+    Measured cost of keeping it: 1,281 bytes/step against a 4,328-byte step record, i.e. +30% on
+    a tag that pool_daemon deletes at the end of the round anyway.
+
+    With ``lean``, also drops None-valued keys inside each select option (they dominate the
     Option dict) to shrink the footprint. Never touches state/logs semantics.
     """
     o = dict(obs)
-    o.pop("search_begin_input", None)
+    if not keep_blob:
+        o.pop("search_begin_input", None)
     if lean:
         sel = o.get("select")
         if isinstance(sel, dict) and isinstance(sel.get("option"), list):
@@ -288,7 +294,8 @@ def _mk_step(o, cur, i):
     }
 
 
-def _play_game(order, game_id, max_steps, lean, eps=0.0, perturb=0, perturb_frac=0.0):
+def _play_game(order, game_id, max_steps, lean, eps=0.0, perturb=0, perturb_frac=0.0,
+               keep_blob=False):
     """Play one battle. ``order`` = (name0, name1) mapping player index -> deck.
 
     Returns (header_dict, [step_dicts]) or None if the battle failed to start.
@@ -337,7 +344,7 @@ def _play_game(order, game_id, max_steps, lean, eps=0.0, perturb=0, perturb_frac
                 end_reason = "draw"
                 break
             yi = cur["yourIndex"]
-            o = _clean_obs(obs, lean)
+            o = _clean_obs(obs, lean, keep_blob)
             try:
                 choice = agents[yi](obs)          # heuristic action = training LABEL
             except Exception:
@@ -409,7 +416,8 @@ def _play_pair(task):
     Alternates which deck is player-index 0 across games (as arena.match does).
     The actual first player is decided by the engine and recorded per game.
     """
-    nameA, nameB, games, outdir, lean, max_steps, rel, eps, perturb, perturb_frac = task
+    (nameA, nameB, games, outdir, lean, max_steps, rel, eps, perturb, perturb_frac,
+     keep_blob) = task
     fname = f"{nameA}__vs__{nameB}.jsonl.gz"
     path = os.path.join(outdir, fname)
     rows = []
@@ -418,7 +426,8 @@ def _play_pair(task):
         for g in range(games):
             order = (nameA, nameB) if g % 2 == 0 else (nameB, nameA)
             game_id = f"{nameA}__vs__{nameB}#{g:05d}"
-            res = _play_game(order, game_id, max_steps, lean, eps, perturb, perturb_frac)
+            res = _play_game(order, game_id, max_steps, lean, eps, perturb, perturb_frac,
+                             keep_blob)
             if res is None:
                 continue
             header, steps = res
@@ -451,6 +460,10 @@ def main():
     ap.add_argument("--workers", type=int,
                     default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--max-steps", type=int, default=4000)
+    ap.add_argument("--keep-blob", action="store_true",
+                    help="keep obs['search_begin_input'] -- REQUIRED for build_rerank --pfmt "
+                         "v41, which decodes the engine's hidden effect state out of it. Costs "
+                         "+30% tag size on a tag that is deleted at the end of the round.")
     ap.add_argument("--lean", action="store_true",
                     help="prune None-valued option fields to shrink files")
     ap.add_argument("--explore", type=float, default=0.1,
@@ -491,7 +504,7 @@ def main():
     if args.mirror:
         pairs += [(d, d) for d in decks]
     tasks = [(a, b, args.games, outdir, args.lean, args.max_steps, rel, args.explore,
-              args.perturb, args.perturb_frac) for a, b in pairs]
+              args.perturb, args.perturb_frac, args.keep_blob) for a, b in pairs]
 
     print(f"{len(decks)} decks, {len(pairs)} matchups x {args.games} games "
           f"= up to {len(pairs) * args.games} battles on {args.workers} workers "

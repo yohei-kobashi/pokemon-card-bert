@@ -96,7 +96,9 @@ def main():
                             drop["act not in menu"] += 1
                             continue
                         fallback += 1
+                    rec_extra = {"pfmt": d["pfmt"]} if d.get("pfmt") else {}
                     g.write(json.dumps({
+                        **rec_extra,
                         "prompt": ACT + state, "target": str(tgt),
                         "game_id": d.get("game_id"), "i": d.get("i"),
                         "kind": d.get("kind", "main"), "mode": "act",

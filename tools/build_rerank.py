@@ -169,7 +169,7 @@ def _canonical_index(cands, text, obs=None, state=None):
 
 
 def _emit(out, st, gid, i, state, raw, chosen_idx, kind, deck=None, opp=None,
-          explored=False, obs=None):
+          explored=False, obs=None, pver=None):
     """Dedup candidates by the ACT they perform, remap chosen, drop if <2 remain, then write one
     listwise record.
 
@@ -198,10 +198,14 @@ def _emit(out, st, gid, i, state, raw, chosen_idx, kind, deck=None, opp=None,
     if len(cands) < 2 or chosen_new is None:
         st["n_nochoice"] += (len(cands) < 2)
         return
-    out.write(json.dumps({"game_id": gid, "i": i, "state": state,
-                          "candidates": cands, "chosen": chosen_new,
-                          "kind": kind, "deck": deck, "opp": opp,
-                          "explored": explored}, ensure_ascii=False) + "\n")
+    rec = {"game_id": gid, "i": i, "state": state,
+           "candidates": cands, "chosen": chosen_new,
+           "kind": kind, "deck": deck, "opp": opp, "explored": explored}
+    if pver:
+        # The prompt-format stamp. Rows written before this existed carry no `pfmt` at all,
+        # which is what lets tools/prune_pool_fmt.py delete them without parsing the text.
+        rec["pfmt"] = pver
+    out.write(json.dumps(rec, ensure_ascii=False) + "\n")
     st["n_records"] += 1
     st["n_cands"] += len(cands)
 
@@ -233,12 +237,11 @@ def _stale(decks, names):
 
 
 def _build_shard(job):
-    idx, path, out_dir, tag, glossary, skip_stale, deck_mode, label, sides, dshuf = job
+    idx, path, out_dir, tag, fmt, skip_stale, label, sides, pver = job
     # the prompt format is part of the model -- lm/agent must be given the SAME glossary
     # mode and deck_name at inference or train and deploy prompts diverge silently
     _ser = lambda o, p: serialize_stateless(  # noqa: E731
-        o, deck_ids=gd.get(p), glossary=glossary, deck_name=dn.get(p),
-        deck_mode=deck_mode, deck_shuffle=dshuf)
+        o, deck_ids=gd.get(p), deck_name=dn.get(p), **fmt)
     shard, done = _shard_paths(out_dir, tag, idx)
     if os.path.exists(shard) and os.path.exists(done):
         with open(done) as f:
@@ -286,7 +289,7 @@ def _build_shard(job):
                         continue
                     raw = [encode_option(o, obs) for o in opts]
                     _emit(out, st, gid, si, _ser(obs, p), raw, order[0], kind, mine,
-                          theirs, expl, obs=obs)
+                          theirs, expl, obs=obs, pver=pver)
                     st["n_single"] += 1
                     continue
 
@@ -302,7 +305,7 @@ def _build_shard(job):
                         if allow_stop:
                             raw = raw + [STOP]
                         _emit(out, st, gid, si, _ser(sub, p), raw, chosen_local, kind,
-                              mine, theirs, expl, obs=sub)
+                              mine, theirs, expl, obs=sub, pver=pver)
                         st["n_mp"] += 1
                         picked.append(pos_i)
                     if good and lo <= len(picked) < hi:      # winner stopped early (incl. declined)
@@ -310,7 +313,7 @@ def _build_shard(job):
                         if allow_stop and remaining:
                             raw = [encode_option(opts[i], obs) for i in remaining] + [STOP]
                             _emit(out, st, gid, si, _ser(sub, p), raw, len(raw) - 1, kind,
-                                  mine, theirs, obs=sub)
+                                  mine, theirs, obs=sub, pver=pver)
                             st["n_stop"] += 1
                 except Exception:
                     st["mp_err"] += 1
@@ -323,6 +326,14 @@ def _build_shard(job):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--pfmt", default="legacy", choices=("legacy", "current", "v41"),
+                    help="'current' takes the ENTIRE prompt format from rl_config.PROMPT_FMT "
+                         "(glossary, deck_mode, board_facts, identify, menu_dedup) so the pool "
+                         "cannot drift from what lm/agent renders. 'v41' is PROMPT_FMT_V41 -- "
+                         "current plus the engine's hidden effect state; it needs selfplay tags "
+                         "generated with --keep-blob, since the facts are decoded from "
+                         "obs['search_begin_input']. The individual flags below are ignored "
+                         "when either is set.")
     ap.add_argument("--tag", required=True, help="gen_selfplay run tag under data/selfplay/")
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "rerank"))
     ap.add_argument("--suffix", default="", help="append to output filename (e.g. _mp)")
@@ -357,6 +368,17 @@ def main():
                     help="keep games whose logged decklist no longer matches decks/")
     args = ap.parse_args()
 
+    if args.pfmt in ("current", "v41"):
+        from tools import rl_config
+        fmt = dict(rl_config.PROMPT_FMT_V41 if args.pfmt == "v41" else rl_config.PROMPT_FMT)
+        pver = rl_config.PROMPT_VERSIONS[args.pfmt]
+        print("[pfmt] %s (%s): %s" % (args.pfmt, pver, fmt), flush=True)
+    else:
+        fmt = dict(glossary=args.glossary, deck_mode=args.deck_mode,
+                   deck_shuffle=args.deck_shuffle)
+        pver = None
+        print("[pfmt] legacy: %s" % fmt, flush=True)
+
     in_dir = os.path.join(ROOT, "data", "selfplay", args.tag)
     files = sorted(glob.glob(os.path.join(in_dir, "*__vs__*.jsonl.gz")))
     if not files:
@@ -366,7 +388,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     workers = args.workers or (os.cpu_count() or 1)
     shard_tag = args.tag + args.suffix
-    jobs = [(i, p, args.out, shard_tag, args.glossary, args.skip_stale, args.deck_mode, args.label, args.sides, args.deck_shuffle)
+    jobs = [(i, p, args.out, shard_tag, fmt, args.skip_stale, args.label, args.sides, pver)
             for i, p in enumerate(files)]
     print(f"build_rerank: {len(files)} matchups x {workers} workers -> {args.out}", flush=True)
 
