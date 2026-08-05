@@ -326,7 +326,7 @@ def _build_shard(job):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--pfmt", default="legacy", choices=("legacy", "current", "v41"),
+    ap.add_argument("--pfmt", default="legacy", choices=("legacy", "current", "v41", "v40"),
                     help="'current' takes the ENTIRE prompt format from rl_config.PROMPT_FMT "
                          "(glossary, deck_mode, board_facts, identify, menu_dedup) so the pool "
                          "cannot drift from what lm/agent renders. 'v41' is PROMPT_FMT_V41 -- "
@@ -368,9 +368,10 @@ def main():
                     help="keep games whose logged decklist no longer matches decks/")
     args = ap.parse_args()
 
-    if args.pfmt in ("current", "v41"):
+    if args.pfmt in ("current", "v41", "v40"):
         from tools import rl_config
-        fmt = dict(rl_config.PROMPT_FMT_V41 if args.pfmt == "v41" else rl_config.PROMPT_FMT)
+        fmt = dict({"current": rl_config.PROMPT_FMT, "v41": rl_config.PROMPT_FMT_V41,
+                    "v40": rl_config.PROMPT_FMT_V40}[args.pfmt])
         pver = rl_config.PROMPT_VERSIONS[args.pfmt]
         print("[pfmt] %s (%s): %s" % (args.pfmt, pver, fmt), flush=True)
     else:

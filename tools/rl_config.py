@@ -49,8 +49,14 @@ def _all_decks():
 # energy happen to be in hand -- noise with no bearing on whether attaching is right.
 # CHECKPOINTS BEFORE v40 (rerank_gte_v39, rerank_loop2..4) WERE TRAINED WITHOUT IT: screen those
 # with menu_dedup=False or they are scored on a format they never saw.
+# hidden_facts (v41, 2026-08-05) adds the engine's hidden effect state: live damage with a KO
+# marker per attack option, the post-attach `need` per attach option, the incoming threat on our
+# Active, and the identity of Special Energies whose effect persists. +9.08 tokens/decision.
+# Flipped here on 2026-08-05 when the v40 reranker loop was stopped -- rounds 4->8 measured
+# -0.71pt +- 1.33 paired (flat), so there was nothing left to keep comparable. Everything from
+# here on -- generation, screens, DAgger -- is v41.
 PROMPT_FMT = dict(glossary="none", deck_mode="roles", deck_shuffle=False,
-                  board_facts=True, identify="op", menu_dedup=True)
+                  board_facts=True, identify="op", menu_dedup=True, hidden_facts=True)
 PROMPT_FMT_V37 = dict(glossary="none", deck_mode="remaining", deck_shuffle=True)
 
 # v41 (2026-08-05): everything v40 has, plus the engine's hidden effect state -- live damage
@@ -58,17 +64,14 @@ PROMPT_FMT_V37 = dict(glossary="none", deck_mode="remaining", deck_shuffle=True)
 # incoming threat on our Active, and the identity of Special Energies whose effect persists.
 # See [[hidden-state-from-blob]]; +9.08 tokens/decision measured over 46,377 decisions.
 #
-# PROMPT_FMT IS DELIBERATELY NOT THIS YET. Every live checkpoint was trained on v40, and the
-# screen renders with PROMPT_FMT -- flipping it here would score v40 models on a format they
-# have never seen and silently invalidate every paired comparison in flight. The BASE POOL is
-# generated as v41 (build_rerank --pfmt v41) so the data accumulates; PROMPT_FMT moves only
-# once the pool has been pruned to v41 and a checkpoint is trained on it.
-PROMPT_FMT_V41 = dict(PROMPT_FMT, hidden_facts=True)
+PROMPT_FMT_V41 = dict(PROMPT_FMT)                       # alias; PROMPT_FMT IS v41 now
+PROMPT_FMT_V40 = {k: v for k, v in PROMPT_FMT.items() if k != "hidden_facts"}
 
 # Stamped on every pool row by build_rerank so the two can be told apart -- and so the old ones
 # can be deleted -- without guessing from the text. Rows written before this existed have no
 # `pfmt` key at all, which is exactly what identifies them.
-PROMPT_VERSIONS = {"current": "v40", "v41": "v41"}
+PROMPT_VERSION = "v41"
+PROMPT_VERSIONS = {"current": PROMPT_VERSION, "v41": "v41", "v40": "v40"}
 
 
 # --- matched-sampling target (Stage A) --------------------------------------------

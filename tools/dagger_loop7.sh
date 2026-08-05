@@ -318,6 +318,13 @@ print(','.join(pick))
       || { say "STOP: the run did not report RESUME -- it trained from base"; break; }
 
   say "round $ROUND done -> $OUT"
+  # ADVANCE THE PAIRED BASELINE. Without this line PREV keeps whatever it was seeded with
+  # before the loop, so every "[paired vs previous round]" is really "vs that one old
+  # checkpoint" -- and it inherits a constant offset from however that screen happened to
+  # score. loop7 rounds 5-8 printed +1.2 to +2.2pt that way while the true round-over-round
+  # deltas were -0.99 to +0.79 and the 4-round total was -0.71pt. dagger_loop_i2d.sh has
+  # always had it; loop7 did not.
+  PREV=$MIR
   MODEL=$OUT
   ROUND=$((ROUND+1))
   rm -f "$MIX"        # 200-400 MB each; the dagger file is what matters and it is kept
