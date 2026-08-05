@@ -112,6 +112,24 @@ def patch():
         t = sub_once(t, re.escape(TOKEN), f"state.game->prng({owner})", f"{fname} rng use", count)
         open(p, "w", encoding="utf-8").write(t)
 
+    # 3. record the base damage the engine actually used, as an oracle for lm/damage.py.
+    #    GameProc.h:AttackDamage computes `attack.damage + state.attackDamageChange` -- the
+    #    dynamic part exists only during resolution, so it cannot be queried from outside. This
+    #    stashes the last one, and tools/verify_base_damage.py compares it to the prediction the
+    #    prompt WOULD have shown when that attack was still just a menu entry.
+    p = os.path.join(DST, "GameProc.h")
+    t = open(p, encoding="utf-8").read()
+    t = sub_once(t, r"\binline void AttackDamage\(State& state\) \{",
+                 "inline std::array<int, 4> MirrorLastBase{};\n\n"
+                 "inline void AttackDamage(State& state) {",
+                 "AttackDamage decl")
+    t = sub_once(t, r"\bint baseDamage = attack\.damage \+ state\.attackDamageChange;",
+                 "int baseDamage = attack.damage + state.attackDamageChange;\n"
+                 "\tMirrorLastBase = { state.currentAttackId, (int)attackerRef.cardIndex,"
+                 " baseDamage, attack.damage };",
+                 "baseDamage")
+    open(p, "w", encoding="utf-8").write(t)
+
     print(f"patched -> {DST}")
 
 

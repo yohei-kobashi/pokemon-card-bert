@@ -242,7 +242,8 @@ def _side(pl, me, board_facts=False, obs=None, pi=None, extra=None, dec=None):
     return s
 
 
-def render_state(obs, deck_name=None, board_facts=False, identify="both", hidden_facts=False):
+def render_state(obs, deck_name=None, board_facts=False, identify="both", hidden_facts=False,
+                 dec=None):
     """``hidden_facts`` adds the engine's live damage model -- ``dmg:+N`` on our attacker,
     ``tk:+N`` / ``tk:x0`` / ``fx:x`` on what it would hit. Those come from lm/hidden.py, which
     decodes the state blob the official library already puts in the observation; nothing is
@@ -255,11 +256,12 @@ def render_state(obs, deck_name=None, board_facts=False, identify="both", hidden
     sd = f" stad:{vocab.card_tok(stad[0]['id'])}" if stad else ""
     flags = "".join(f for f, k in (("E", "energyAttached"), ("S", "supporterPlayed"),
                                    ("R", "retreated"), ("M", "stadiumPlayed")) if cur.get(k))
-    extra, dec = {}, None
+    extra = {}
     if hidden_facts:
         from lm import hidden as _hidden
         try:
-            dec = _hidden.read(obs)
+            if dec is None:
+                dec = _hidden.read(obs)
             extra = _hidden.board_extra(obs, dec) if dec else {}
         except Exception:
             extra, dec = {}, None
@@ -290,7 +292,42 @@ def _identify(obs, yi, deck_name=None):
         return ""
 
 
-def render_options(obs, menu_dedup=False):
+def _attack_damage_notes(obs, dec):
+    """`{"attack:a123": " d:250"}` -- the base damage that attack would ACTUALLY use.
+
+    31.2% of offered attack options have damage that moves (bench count, hand size, damage
+    counters, prizes taken, attached energy, coins), and with glossary='none' the prompt carries
+    no damage at all -- the `a123` token cannot encode a value that changes every turn. `d:` is
+    exact, `d~` is an expectation over coins, and an attack whose damage cannot be resolved
+    (a sub-select not yet made, an unimplemented condition) is left UNANNOTATED rather than
+    guessed. See lm/damage.py; tools/verify_base_damage.py checks it against the base damage the
+    engine actually used."""
+    from lm import damage as _damage
+    cur = obs.get("current") or {}
+    yi = cur.get("yourIndex", 0)
+    try:
+        act = ((cur["players"][yi].get("active") or [None])[0])
+    except (KeyError, IndexError, TypeError):
+        return {}
+    if not act or act.get("serial") is None:
+        return {}
+    out = {}
+    for o in ((obs.get("select") or {}).get("option") or []):
+        t = encode_option(o, obs)
+        if not t.startswith("attack:") or t in out:
+            continue
+        try:
+            aid = int(t.split(":")[1])
+        except ValueError:
+            continue
+        val, kind = _damage.base_damage(obs, dec, act["serial"], aid, yi)
+        if val is None:
+            continue
+        out[t] = " d:%d" % val if kind == "exact" else " d~%d" % val
+    return out
+
+
+def render_options(obs, menu_dedup=False, dec=None):
     """``menu_dedup`` shows one entry per ACT instead of one per menu position.
 
     The menu currently lists every option the engine offers, and 24.4% of those are the same act
@@ -325,7 +362,8 @@ def render_options(obs, menu_dedup=False):
     if menu_dedup:
         from lm.action_token import dedup_options
         texts = dedup_options(texts, obs)[0]
-    items = " ".join(f"{i}={t}" for i, t in enumerate(texts))
+    ann = _attack_damage_notes(obs, dec) if dec is not None else {}
+    items = " ".join(f"{i}={t}{ann.get(t, '')}" for i, t in enumerate(texts))
     if mp and mp.get("allow_stop"):         # may pick no more (min already satisfied)
         items += f" {len(texts)}={STOP}"
     return (f"SEL {vocab.ctx_name(sel['context'])}{extra} "
@@ -537,10 +575,17 @@ def serialize_stateless(obs, deck_ids=None, glossary="full", deck_name=None,
         from lm.roles import for_deck
         roles = for_deck(deck_name)
     mine = render_my_deck(deck_ids, obs, deck_mode, deck_shuffle, roles)
+    dec = None
+    if hidden_facts:
+        from lm import hidden as _hidden
+        try:
+            dec = _hidden.read(obs)
+        except Exception:
+            dec = None
     return (head + (mine + " " if mine else "")
             + render_state(obs, deck_name, board_facts=board_facts,
-                           identify=identify, hidden_facts=hidden_facts)
-            + " || " + render_options(obs, menu_dedup))
+                           identify=identify, hidden_facts=hidden_facts, dec=dec)
+            + " || " + render_options(obs, menu_dedup, dec))
 
 
 # Both DECK renderings: the flat `DECK[c1x4,...]` of static/remaining mode, and the

@@ -1,0 +1,2112 @@
+{
+ "1006": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 86,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 80,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:takenPrize"
+  ]
+ },
+ "1007": {
+  "effects": [
+   {
+    "areas": [
+     4
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 4,
+      "targetType": 90,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": -230,
+    "v1": 0
+   }
+  ],
+  "printed": 260,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1009": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 159,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 67,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 13,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 2,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 80,
+    "v1": 0
+   }
+  ],
+  "printed": 80,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1042": {
+  "effects": [
+   {
+    "areas": [
+     3
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 20,
+      "val": 3,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 20,
+    "v1": 0
+   },
+   {
+    "areas": [
+     3
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 20,
+      "val": 3,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 1,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [
+     3
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 20,
+      "val": 3,
+      "val2": 0
+     }
+    ],
+    "effectType": 13,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 1,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1046": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 111,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 6,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 20,
+      "val": 3,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 100,
+    "v1": 0
+   },
+   {
+    "areas": [
+     1
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 1,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1065": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 159,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 67,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 2,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 130,
+    "v1": 0
+   }
+  ],
+  "printed": 200,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1079": {
+  "effects": [
+   {
+    "areas": [
+     4,
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 78,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 16,
+    "v1": 50
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:typeEnergy"
+  ]
+ },
+ "1092": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 83,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 50,
+    "v1": 0
+   }
+  ],
+  "printed": 200,
+  "tags": [
+   "coin:untilTail"
+  ]
+ },
+ "1110": {
+  "effects": [
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 67,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 120,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1130": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 94,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   }
+  ],
+  "printed": 100,
+  "tags": [
+   "det/hidden:dmgPreTurn"
+  ]
+ },
+ "114": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 164,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 10,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1143": {
+  "effects": [
+   {
+    "areas": [
+     4
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 33,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 90,
+    "v1": 0
+   }
+  ],
+  "printed": 20,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "115": {
+  "effects": [
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1193": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 4,
+      "targetType": 90,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 150,
+    "v1": 0
+   }
+  ],
+  "printed": 120,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "120": {
+  "effects": [
+   {
+    "areas": [
+     4
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 76,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 30,
+    "v1": 0
+   }
+  ],
+  "printed": 30,
+  "tags": [
+   "det/visible:energyCount"
+  ]
+ },
+ "1225": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 99,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 170,
+    "v1": 0
+   }
+  ],
+  "printed": 60,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "123": {
+  "effects": [
+   {
+    "areas": [
+     2
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 30,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1233": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 1,
+    "conditionType": 7,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 4,
+      "val": 2,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 4,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 90,
+    "v1": 0
+   }
+  ],
+  "printed": 30,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1240": {
+  "effects": [
+   {
+    "areas": [
+     2
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 50,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1267": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 17,
+    "conditions": [],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 100,
+    "v1": 0
+   }
+  ],
+  "printed": 30,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1285": {
+  "effects": [
+   {
+    "areas": [
+     2
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 55,
+      "val": 0,
+      "val2": 0
+     },
+     {
+      "cmp": 0,
+      "targetType": 17,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 60,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1347": {
+  "effects": [
+   {
+    "areas": [
+     4
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 4,
+      "targetType": 90,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 200,
+    "v1": 0
+   }
+  ],
+  "printed": 200,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1407": {
+  "effects": [
+   {
+    "areas": [
+     4,
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 8,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "1408": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 15,
+    "conditions": [],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 120,
+    "v1": 0
+   }
+  ],
+  "printed": 50,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "1539": {
+  "effects": [
+   {
+    "areas": [
+     2
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 53,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 21,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     12
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 4,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 2,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 60,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "160": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 77,
+      "val": 8,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 80,
+    "v1": 0
+   }
+  ],
+  "printed": 50,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "175": {
+  "effects": [
+   {
+    "areas": [
+     4
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 88,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 30,
+    "v1": 0
+   }
+  ],
+  "printed": 100,
+  "tags": [
+   "det/visible:damageCounter"
+  ]
+ },
+ "184": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 86,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 60,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:takenPrize"
+  ]
+ },
+ "195": {
+  "effects": [
+   {
+    "areas": [
+     4,
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 78,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 30
+   }
+  ],
+  "printed": 30,
+  "tags": [
+   "det/visible:typeEnergy"
+  ]
+ },
+ "20": {
+  "effects": [
+   {
+    "areas": [
+     7
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 60,
+    "v1": 0
+   },
+   {
+    "areas": [
+     7
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 1,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [
+     7
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 1,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 0,
+    "v1": 0
+   }
+  ],
+  "printed": 60,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "216": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 164,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 20,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "224": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 88,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 10,
+    "v1": 0
+   }
+  ],
+  "printed": 80,
+  "tags": [
+   "det/visible:damageCounter"
+  ]
+ },
+ "228": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 82,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 3,
+    "v1": 10
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "coin:perHead"
+  ]
+ },
+ "232": {
+  "effects": [
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 30,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "324": {
+  "effects": [
+   {
+    "areas": [
+     4,
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 76,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 60,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:energyCount"
+  ]
+ },
+ "363": {
+  "effects": [
+   {
+    "areas": [
+     4,
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 40,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 78,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 8,
+    "v1": 20
+   }
+  ],
+  "printed": 20,
+  "tags": [
+   "det/visible:typeEnergy"
+  ]
+ },
+ "369": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 164,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 10,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "371": {
+  "effects": [
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 20,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "379": {
+  "effects": [
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 54,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 54,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 2,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 150,
+    "v1": 0
+   }
+  ],
+  "printed": 130,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "390": {
+  "effects": [
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 11,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 40,
+    "v1": 0
+   }
+  ],
+  "printed": 180,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "420": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 88,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:damageCounter"
+  ]
+ },
+ "446": {
+  "effects": [
+   {
+    "areas": [
+     3
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 14,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 30,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "471": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 16,
+    "conditions": [],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 100,
+    "v1": 0
+   }
+  ],
+  "printed": 70,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "493": {
+  "effects": [
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 67,
+      "val": 0,
+      "val2": 0
+     },
+     {
+      "cmp": 0,
+      "targetType": 85,
+      "val": 2,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 70,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "540": {
+  "effects": [
+   {
+    "areas": [
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 43,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 88,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 10,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:damageCounter"
+  ]
+ },
+ "560": {
+  "effects": [
+   {
+    "areas": [
+     4,
+     5
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 50,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 30,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "578": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 82,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 2,
+    "v1": 40
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "coin:perHead"
+  ]
+ },
+ "583": {
+  "effects": [
+   {
+    "areas": [
+     15
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 79,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 73,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 0,
+    "v0": 60,
+    "v1": 0
+   }
+  ],
+  "printed": 60,
+  "tags": [
+   "det/visible:flat"
+  ]
+ },
+ "608": {
+  "effects": [
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 1,
+    "conditionType": 2,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 73,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 0,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 1,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 1,
+    "v1": 0
+   },
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 73,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 2,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 60,
+    "v1": 0
+   }
+  ],
+  "printed": 160,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "670": {
+  "effects": [
+   {
+    "areas": [
+     3
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 17,
+      "val": 0,
+      "val2": 0
+     },
+     {
+      "cmp": 0,
+      "targetType": 55,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 20,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "72": {
+  "effects": [
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 12,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   },
+   {
+    "areas": [
+     16
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 74,
+    "failSkip": 0,
+    "i": 1,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 3,
+    "v0": 70,
+    "v1": 0
+   }
+  ],
+  "printed": 0,
+  "tags": [
+   "det/visible:targetCount"
+  ]
+ },
+ "819": {
+  "effects": [
+   {
+    "areas": [],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 86,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 50,
+    "v1": 0
+   },
+   {
+    "areas": [
+     8
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [
+     {
+      "cmp": 0,
+      "targetType": 67,
+      "val": 0,
+      "val2": 0
+     }
+    ],
+    "effectType": 8,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 1,
+    "notMe": 0,
+    "targetPlayer": 1,
+    "v0": 0,
+    "v1": 0
+   }
+  ],
+  "printed": 130,
+  "tags": [
+   "det/visible:takenPrize"
+  ]
+ },
+ "88": {
+  "effects": [
+   {
+    "areas": [
+     4
+    ],
+    "comparator": 0,
+    "conditionType": 0,
+    "conditions": [],
+    "effectType": 76,
+    "failSkip": 0,
+    "i": 0,
+    "isCondition": 0,
+    "list": 0,
+    "notMe": 0,
+    "targetPlayer": 2,
+    "v0": 30,
+    "v1": 0
+   }
+  ],
+  "printed": 10,
+  "tags": [
+   "det/visible:energyCount"
+  ]
+ }
+}
