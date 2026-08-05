@@ -126,7 +126,8 @@ if [ ! -s "$STATE/deploy_ok" ]; then
         --keep "$STATE/keep_ids_deberta.json" --data "$DATA" --work "$STATE/onnx_deberta" \
         --max-len "$MAXLEN" > "$STATE/prune.log" 2>&1; then
     tail -6 "$STATE/sweep.log"; tail -12 "$STATE/prune.log"
-    touch "$STATE/deploy_ok"; say "stage 1 PASSED -- deberta can ship"
+    # `-s` tests for a NON-EMPTY file, so `touch` alone leaves the check re-running forever.
+    echo ok > "$STATE/deploy_ok"; say "stage 1 PASSED -- deberta can ship"
   else
     tail -20 "$STATE/prune.log" 2>/dev/null || tail -20 "$STATE/sweep.log"
     say "stage 1 FAILED -- deberta cannot ship; SKIPPING its training"
