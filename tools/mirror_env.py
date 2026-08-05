@@ -73,6 +73,9 @@ class MirrorEngine:
             self.lib.DebugCalcDamage.argtypes = [ctypes.c_void_p] + [ctypes.c_int] * 4
             self.lib.DebugRetreatCost.restype = ctypes.c_int
             self.lib.DebugRetreatCost.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            self.lib.DebugInsufficientEnergy.restype = ctypes.c_int
+            self.lib.DebugInsufficientEnergy.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                                         ctypes.c_int]
         self.ptr = None
 
     def _obs(self):
@@ -129,6 +132,10 @@ class MirrorEngine:
     def retreat_cost(self, serial):
         """The engine's own State::retreatCost. Instrumented build only."""
         return self.lib.DebugRetreatCost(self.ptr, serial)
+
+    def insufficient_energy(self, serial, attack_id):
+        """The engine's own GameUtil.h:InsufficientEnergyCount. Instrumented build only."""
+        return self.lib.DebugInsufficientEnergy(self.ptr, serial, attack_id)
 
     def card_deps(self):
         """`{"attacks": {attackId: ["H:koPreEnemyTurn", ...]}, "skills": {...}}` -- which cards

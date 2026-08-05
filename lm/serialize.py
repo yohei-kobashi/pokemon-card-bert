@@ -163,6 +163,13 @@ def _need_energy(cid, attached):
 def _board_facts(p, obs=None, pi=None, dec=None):
     """` need:N rt:N` for one in-play Pokemon -- absent from v37 prompts entirely.
 
+    With ``dec`` (the decoded hidden state, lm/hidden.py) BOTH numbers are the engine's own
+    arithmetic rather than a reimplementation: `need` via GameUtil.h:InsufficientEnergyCount and
+    `rt` via State.h:retreatCost. Measured against the engine over 63 decks, the fallbacks are
+    wrong on 0.21% of `need` renders and 1.16% of `rt` -- always in the direction that tells the
+    model a move it can make right now is unaffordable. Team Rocket's Energy ("2 in any
+    combination of {P} and {D}") alone accounts for most of the `need` gap.
+
     `rt` is the LIVE retreat cost when the observation is available, not the card's printed one.
     The printed number is wrong wherever an effect changes it -- 19.4% of all offered retreats
     fleet-wide, 47% on ns_zoroark (N's Castle) and 46% on ethan_hooh (Latias ex) -- and it is
@@ -172,7 +179,12 @@ def _board_facts(p, obs=None, pi=None, dec=None):
     """
     cid = p.get("id")
     out = []
-    need = _need_energy(cid, p.get("energies") or [])
+    need = None
+    if dec is not None:                  # exact: GameUtil.h:InsufficientEnergyCount
+        from lm import hidden as _hidden
+        need = _hidden.need_energy(dec, obs, p.get("serial"))
+    if need is None:
+        need = _need_energy(cid, p.get("energies") or [])
     if need is not None:
         out.append("need:%d" % need)
     rt = None

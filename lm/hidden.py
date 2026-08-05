@@ -451,6 +451,141 @@ def retreat_cost(dec, serial):
                + c["thisTurn"]["retreatCostChange"])
 
 
+# The two attack flags InsufficientEnergyCount reads that the Python card API does not expose.
+# The whole 1,556-attack database has exactly one of each, and NEITHER is in any of our 60 decks
+# -- listed for completeness so the port is faithful rather than approximately faithful.
+# (DebugAttackEnergyFlags regenerates them.)
+_NO_ENERGY_IF_SPECIAL_CONDITION = {146}     # a146 Conkeldurr
+_DARKNESS1_IF_DAMAGED = {993}               # a993 Crawdaunt
+_IDX_PSYCHIC, _IDX_DARKNESS = 5, 7
+_IDX_ALL, _IDX_PD = 10, 11
+
+
+def insufficient_energy(dec, obs, serial, attack_id):
+    """`GameUtil.h:InsufficientEnergyCount` exactly: how many MORE energies this attack needs.
+
+    A direct port, not an approximation. The differences from the old `_shortfall` heuristic in
+    lm/serialize.py are load-bearing:
+
+      * RAINBOW is a wildcard applied to the TOTAL at the end (`allCount`), not greedily matched
+        against typed symbols first -- the two disagree whenever a rainbow could pay either.
+      * a typed energy that matches nothing required becomes COLORLESS payment, and colourless
+        symbols are then paid by `min(colorlessCount, required.colorless)`.
+      * Psychic|Darkness energy is resolved after the main pass, P first, then D, else colourless.
+      * `attackCostDown` / `attackCostChangeColorless` / `thisTurn.attackCostChange` /
+        `attackCostDownColorlessOwnAttack` change the cost and are invisible in the observation.
+
+    The ATTACHED side comes from the observation, not the blob: ToJson already emits the PROVIDED
+    types (`getEnergies`), so special energies that give two, or every type, are live there.
+    """
+    from lm import vocab
+    c = (dec or {}).get("cards", {}).get(serial)
+    att = vocab._ATTACKS.get(attack_id)
+    if c is None or att is None:
+        return None
+    master = _master(c["cardId"])
+    if master is None:
+        return None
+    cont = c["continual"]
+    own = attack_id in (master.attacks or [])
+    pi = c["playerIndex"]
+    try:
+        pl = obs["current"]["players"][pi]
+    except (KeyError, IndexError, TypeError):
+        return None
+    attached = None
+    for _p, _z, _i, ser, m in in_play_serials(obs):
+        if ser == serial:
+            attached = m.get("energies") or []
+            break
+    if attached is None:
+        return None
+
+    req = [0] * 12
+    req_colorless = 0
+    req_sum = 0
+    fix = False
+    special = any(pl.get(k) for k in ("poisoned", "burned", "asleep", "paralyzed", "confused"))
+    if attack_id in _NO_ENERGY_IF_SPECIAL_CONDITION and special:
+        fix = True
+    elif (cont["attackEnergyColoressOne"] or cont["attackEnergyPsychicOne"]) and own:
+        fix = True
+        if cont["attackEnergyColoressOne"]:
+            req_colorless += 1
+        else:
+            req[_IDX_PSYCHIC] += 1
+        req_sum += 1
+    elif attack_id in _DARKNESS1_IF_DAMAGED and c["damage"] > 0:
+        fix = True
+        req[_IDX_DARKNESS] += 1
+        req_sum += 1
+    else:
+        for e in (att.energies or []):
+            if e == 0:
+                req_colorless += 1
+            else:
+                req[e] += 1
+            req_sum += 1
+
+    all_count = pd_count = colorless_count = 0
+    for e in attached:
+        if e == _IDX_ALL:
+            all_count += 1
+        elif e == 0:
+            colorless_count += 1
+        elif e == _IDX_PD:
+            pd_count += 1
+        elif req[e] > 0:
+            req[e] -= 1
+            req_sum -= 1
+        else:
+            colorless_count += 1
+
+    if not fix:
+        all_count += cont["attackCostDown"]
+        change = cont["attackCostChangeColorless"] + c["thisTurn"]["attackCostChange"]
+        if change < 0:
+            colorless_count -= change
+        else:
+            req_colorless += change
+            req_sum += change
+        if cont["attackCostDownColorlessOwnAttack"] > 0 and own:
+            colorless_count += cont["attackCostDownColorlessOwnAttack"]
+
+    for _ in range(pd_count):
+        if req[_IDX_PSYCHIC] > 0:
+            req[_IDX_PSYCHIC] -= 1
+            req_sum -= 1
+        elif req[_IDX_DARKNESS] > 0:
+            req[_IDX_DARKNESS] -= 1
+            req_sum -= 1
+        else:
+            colorless_count += 1
+
+    return max(0, req_sum - all_count - min(colorless_count, req_colorless))
+
+
+def need_energy(dec, obs, serial):
+    """Smallest number of extra energies that makes ANY DAMAGING attack payable -- the same
+    quantity `need:N` has always rendered, computed with the engine's arithmetic."""
+    c = (dec or {}).get("cards", {}).get(serial)
+    if c is None:
+        return None
+    from lm import vocab
+    master = _master(c["cardId"])
+    if master is None or not master.attacks:
+        return None
+    vals = []
+    for aid in master.attacks:
+        a = vocab._ATTACKS.get(aid)
+        if a is None or not a.damage:
+            continue
+        v = insufficient_energy(dec, obs, serial, aid)
+        if v is not None:
+            vals.append(v)
+    return min(vals) if vals else None
+
+
 def board_extra(obs, dec=None):
     """`{serial: " dmg:+30"}`-style suffixes for lm/serialize.py, rendered only when non-default.
 
