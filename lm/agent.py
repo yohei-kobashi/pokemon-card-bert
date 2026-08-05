@@ -48,7 +48,7 @@ def _argmax(xs):
     return best_i
 
 
-def _dedup(texts):
+def _dedup(texts, obs=None):
     """-> (unique texts, first original index of each).
 
     Two menu entries often encode to the SAME string -- three copies of the same card in
@@ -56,19 +56,32 @@ def _dedup(texts):
     are duplicates). A cross-encoder re-encodes the ENTIRE state once per candidate, so
     each duplicate is a full wasted forward pass. Identical text -> identical score, so
     taking the argmax over the unique list and mapping back to the first occurrence picks
-    the same move. build_rerank._emit dedups the training records the same way."""
-    seen, uniq, pos = set(), [], []
-    for i, t in enumerate(texts):
-        if t not in seen:
-            seen.add(t)
-            uniq.append(t)
-            pos.append(i)
+    the same move.
+
+    Equal TEXT is not the only equal MOVE, though. `card:c305@DECK1` and `card:c305@DECK6`
+    are two copies of one card in a shuffled pile; `facedown:PRIZE2` and `facedown:PRIZE3`
+    are two face-down prizes. Collapsing those as well removes a further 5.6% of forward
+    passes, and 5.65% of decisions turn out to have no choice in them at all.
+
+    Board slots go the same way once the observation is available. Three copies of one Basic
+    sitting on the bench at full HP with nothing attached are rendered identically in the
+    prompt, so `attach:c7@BENCH0` and `attach:c7@BENCH2` differ only by a number that carries
+    no information -- measured at 38.6% of attach decisions, capping a perfect model at 86.3%
+    top1 on that kind. Passing ``obs`` collapses them; omitting it degrades to the text-only
+    behaviour rather than failing.
+
+    This MUST match build_rerank._emit and collect_dagger, which dedup the same way: a model
+    trained with the twins collapsed has never had to rank them apart, so leaving them separate
+    here would ask it for a comparison its training never contained."""
+    from lm.action_token import dedup_options
+    uniq, pos, _keys = dedup_options(texts, obs)
     return uniq, pos
 
 
 def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=None,
                   deck_glossary=True, deck_mode="static", deck_shuffle=False,
-                  board_facts=False, identify="both"):
+                  board_facts=False, identify="both", menu_dedup=False,
+                  hidden_facts=False):
     """``glossary`` / ``deck_name`` / ``deck_glossary`` MUST match what build_rerank or
     build_sft rendered the TRAINING data with -- the prompt format is part of the model,
     not a runtime option.
@@ -85,7 +98,8 @@ def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=Non
     _ser = lambda o: serialize_stateless(o, deck_ids=deck_ids, glossary=glossary,  # noqa: E731
                                          deck_name=deck_name, deck_mode=deck_mode,
                                          deck_shuffle=deck_shuffle,
-                                         board_facts=board_facts, identify=identify)
+                                         board_facts=board_facts, identify=identify,
+                                         menu_dedup=menu_dedup, hidden_facts=hidden_facts)
 
     def _score_pick(obs):
         sel = obs["select"]
@@ -94,7 +108,7 @@ def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=Non
         hi = sel.get("maxCount", 1) or 1
         prompt = _ACT_PROMPT + _ser(obs)
         if lo == 1 and hi == 1:                        # exactly one -> argmax
-            uniq, pos = _dedup([encode_option(o, obs) for o in opts])
+            uniq, pos = _dedup([encode_option(o, obs) for o in opts], obs)
             scores = model.score(prompt, uniq, obs)
             if not scores or len(scores) != len(uniq):
                 return None
@@ -105,7 +119,8 @@ def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=Non
             sub, remaining, allow_stop = multipick_substate(obs, picked)
             if not remaining:
                 break
-            uniq, pos = _dedup([encode_option(opts[i], obs) for i in remaining])
+            # `sub` is what gets serialized, so the descriptors must come from it too
+            uniq, pos = _dedup([encode_option(opts[i], obs) for i in remaining], sub)
             cands = uniq + [STOP] if allow_stop else uniq   # STOP never collides
             scores = model.score(_ACT_PROMPT + _ser(sub), cands, obs)
             if not scores or len(scores) != len(cands):
