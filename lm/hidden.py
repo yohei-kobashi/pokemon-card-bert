@@ -461,7 +461,7 @@ _IDX_PSYCHIC, _IDX_DARKNESS = 5, 7
 _IDX_ALL, _IDX_PD = 10, 11
 
 
-def insufficient_energy(dec, obs, serial, attack_id):
+def insufficient_energy(dec, obs, serial, attack_id, attached=None):
     """`GameUtil.h:InsufficientEnergyCount` exactly: how many MORE energies this attack needs.
 
     A direct port, not an approximation. The differences from the old `_shortfall` heuristic in
@@ -493,11 +493,11 @@ def insufficient_energy(dec, obs, serial, attack_id):
         pl = obs["current"]["players"][pi]
     except (KeyError, IndexError, TypeError):
         return None
-    attached = None
-    for _p, _z, _i, ser, m in in_play_serials(obs):
-        if ser == serial:
-            attached = m.get("energies") or []
-            break
+    if attached is None:
+        for _p, _z, _i, ser, m in in_play_serials(obs):
+            if ser == serial:
+                attached = m.get("energies") or []
+                break
     if attached is None:
         return None
 
@@ -565,9 +565,12 @@ def insufficient_energy(dec, obs, serial, attack_id):
     return max(0, req_sum - all_count - min(colorless_count, req_colorless))
 
 
-def need_energy(dec, obs, serial):
+def need_energy(dec, obs, serial, attached=None):
     """Smallest number of extra energies that makes ANY DAMAGING attack payable -- the same
-    quantity `need:N` has always rendered, computed with the engine's arithmetic."""
+    quantity `need:N` has always rendered, computed with the engine's arithmetic.
+
+    ``attached`` overrides the energy list read from the observation -- used to answer "and
+    AFTER this attach?" for the menu annotation."""
     c = (dec or {}).get("cards", {}).get(serial)
     if c is None:
         return None
@@ -580,7 +583,7 @@ def need_energy(dec, obs, serial):
         a = vocab._ATTACKS.get(aid)
         if a is None or not a.damage:
             continue
-        v = insufficient_energy(dec, obs, serial, aid)
+        v = insufficient_energy(dec, obs, serial, aid, attached=attached)
         if v is not None:
             vals.append(v)
     return min(vals) if vals else None
@@ -604,6 +607,8 @@ def board_extra(obs, dec=None):
     if not mine:
         return {}
     me = mine[0]
+    thr = active_threat(obs, dec, yi)
+    my_hp = next((m.get("hp") or 0 for pi, z, i, s, m in slots if s == me), 0)
     out = {}
     for pi, z, i, serial, m in slots:
         bits = []
@@ -618,6 +623,11 @@ def board_extra(obs, dec=None):
         if serial == me:
             if f["atk"]:
                 bits.append("dmg:%+d" % f["atk"])
+            if thr is not None:
+                val, exact = thr
+                # `!` = would KO our Active as the board stands. Only on an exact number.
+                bits.append("thr:%d%s" % (val, "!" if exact and val >= my_hp else "")
+                            if exact else "thr~%d" % val)
         else:
             if f["zero"] and not f["zero_static"]:
                 bits.append("tk:x0")
@@ -630,3 +640,121 @@ def board_extra(obs, dec=None):
         if bits:
             out[serial] = " " + " ".join(bits)
     return out
+
+
+# ------------------------------------------------------------------------------------------
+# Menu-facing derived facts: post-attach need, and the threat on our Active.
+# ------------------------------------------------------------------------------------------
+
+# What each Special Energy PROVIDES, as energy-type indexes (State.h:getEnergyInfo). 10 = every
+# type ("rainbow"), 11 = Psychic|Darkness. Conditional providers (Neo Upper / Prism / Ignition)
+# are handled in provided_energy; anything not listed there fails closed to "no annotation".
+# tools/verify_menu_notes.py checks every prediction against the energies the engine actually
+# attached, which is what makes a hand-written table safe to ship.
+_SPECIAL_PROVIDES = {
+    9: [0],          # Boomerang
+    11: [0],         # Mist
+    13: [0],         # Enriching
+    14: [0],         # Spiky
+    18: [1],         # Grow Grass
+    19: [5],         # Telepath Psychic
+    20: [6],         # Rock Fighting
+    12: [10],        # Legacy: every type, 1 at a time
+    15: [11, 11],    # Team Rocket's: 2 in any combination of {P} and {D}
+}
+_KIND_BASIC_ENERGY, _KIND_SPECIAL_ENERGY = 5, 6
+
+
+_GRASS_ENERGY_CID = 1
+
+
+def provided_energy(energy_cid, target_cid, target_continual=None):
+    """Energy-type indexes this card provides once attached to `target_cid`, or None.
+
+    Mirrors State.h:getEnergyInfo exactly, including the two target-dependent rules the first
+    version missed and tools/verify_menu_notes.py caught: a Basic {G} Energy provides G x2 on a
+    Pokemon carrying the `doubleGrassEnergy` continual flag (an ability, so it needs the decoded
+    hidden state), and Ignition's "Evolution" means Stage 1/2 ONLY -- the engine tests
+    `evolutionType`, not the Mega flag.
+    """
+    from lm import vocab
+    c = vocab._CARDS.get(energy_cid)
+    if c is None:
+        return None
+    if c.cardType == _KIND_BASIC_ENERGY:
+        if (energy_cid == _GRASS_ENERGY_CID and target_continual is not None
+                and target_continual.get("doubleGrassEnergy")):
+            return [1, 1]
+        return [c.energyType]
+    if c.cardType != _KIND_SPECIAL_ENERGY:
+        return None
+    tm = vocab._CARDS.get(target_cid)
+    if energy_cid == 10:      # Neo Upper: Stage 2 -> every type x2, else C
+        return [10, 10] if (tm is not None and tm.stage2) else [0]
+    if energy_cid == 16:      # Prism: Basic -> every type, else C
+        return [10] if (tm is not None and tm.basic) else [0]
+    if energy_cid == 17:      # Ignition: Stage 1/2 -> CCC, else C
+        return [0, 0, 0] if (tm is not None and (tm.stage1 or tm.stage2)) else [0]
+    return _SPECIAL_PROVIDES.get(energy_cid)
+
+
+def post_attach_need(obs, dec, target_serial, energy_cid):
+    """`need` of the target AFTER attaching `energy_cid`, or None when not derivable."""
+    target = None
+    for _p, _z, _i, ser, m in in_play_serials(obs):
+        if ser == target_serial:
+            target = m
+            break
+    if target is None:
+        return None
+    tc = (dec or {}).get("cards", {}).get(target_serial)
+    prov = provided_energy(energy_cid, target.get("id"),
+                           tc["continual"] if tc else None)
+    if prov is None:
+        return None
+    return need_energy(dec, obs, target_serial,
+                       attached=list(target.get("energies") or []) + prov)
+
+
+def active_threat(obs, dec, yi):
+    """(damage, exact) -- the most the opponent's Active could land on ours NEXT TURN with the
+    energy it has now, through the full damage pipeline. None when there is nothing to compute.
+
+    A LOWER BOUND by construction: it cannot see the attach/switch/pump plays in the opponent's
+    hand. `exact` is False when a coin expectation or an unevaluable payable attack is involved
+    -- rendered `thr~`, never a certain number.
+    """
+    from lm import damage, vocab
+    cur = obs.get("current") or {}
+    players = cur.get("players") or []
+    if len(players) != 2:
+        return None
+    op = 1 - yi
+    try:
+        opp_act = (players[op].get("active") or [None])[0]
+        my_act = (players[yi].get("active") or [None])[0]
+    except (IndexError, TypeError):
+        return None
+    if not opp_act or not my_act:
+        return None
+    master = vocab._CARDS.get(opp_act.get("id"))
+    if master is None or not master.attacks:
+        return None
+    best, exact, any_payable = None, True, False
+    for aid in master.attacks:
+        ins = insufficient_energy(dec, obs, opp_act["serial"], aid)
+        if ins is None or ins > 0:
+            continue
+        any_payable = True
+        val, kind = damage.final_damage(obs, dec, opp_act["serial"], my_act["serial"], aid, op)
+        if val is None:
+            exact = False        # a payable attack we cannot price -> the bound is soft
+            continue
+        if kind == "expected":
+            if best is None or val > best:
+                best, exact = val, False
+        elif best is None or val > best:
+            best = val
+    if not any_payable or best is None:
+        return None
+    return (best, exact)

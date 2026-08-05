@@ -46,7 +46,9 @@ def main():
         getattr(lib, fn).restype = ctypes.c_char_p
     lib.DebugDamageFormula.argtypes = [ctypes.c_int]
 
+    lib.DebugAttackTargetFlags.restype = ctypes.c_char_p
     dyn = {int(k): v for k, v in json.loads(lib.DebugDamageDynamics().decode()).items()}
+    flags = json.loads(lib.DebugAttackTargetFlags().decode())
     keep = set()
     if a.all:
         keep = set(dyn)
@@ -62,16 +64,19 @@ def main():
                 if aid in dyn:
                     keep.add(aid)
 
-    out = {}
+    dynamic = {}
     for aid in sorted(keep):
         at = vocab._ATTACKS.get(aid)
-        out[str(aid)] = {
+        dynamic[str(aid)] = {
             "printed": at.damage if at else 0,
             "tags": dyn[aid],
             "effects": json.loads(lib.DebugDamageFormula(aid).decode()),
         }
-    json.dump(out, open(a.out, "w"), indent=1, sort_keys=True)
-    print("wrote %s: %d attacks" % (a.out, len(out)))
+    # flags are baked for EVERY flagged attack (26 in the whole database), not just the pool:
+    # they gate weakness/resistance/target-effects in final-damage, and a missing flag silently
+    # doubles a damage number.
+    json.dump({"dynamic": dynamic, "flags": flags}, open(a.out, "w"), indent=1, sort_keys=True)
+    print("wrote %s: %d dynamic attacks, %d flagged" % (a.out, len(dynamic), len(flags)))
 
 
 if __name__ == "__main__":

@@ -127,8 +127,33 @@ def main():
                             act = (cur["players"][yi].get("active") or [None])[0]
                             if not act:
                                 continue
-                            pending[(aid, act["serial"])] = damage.base_damage(
-                                obs, dec, act["serial"], aid, yi)
+                            pred = damage.base_damage(obs, dec, act["serial"], aid, yi)
+                            pending[(aid, act["serial"])] = pred
+                            # A: the FINAL number the menu renders, vs the engine's own
+                            # CalcDamage run at the same base. Also cross-checks the baked
+                            # noTarget* flags against the ones the engine reports.
+                            opp = (cur["players"][1 - yi].get("active") or [None])[0]
+                            if pred[0] is not None and pred[1] == "exact" and opp:
+                                fin, fkind = damage.final_damage(
+                                    obs, dec, act["serial"], opp["serial"], aid, yi)
+                                truth = eng.calc_damage(act["serial"], opp["serial"],
+                                                        pred[0], aid)
+                                if truth is not None:
+                                    tflags = (truth["noTargetEffect"],
+                                              truth["noTargetWeakness"],
+                                              truth["noTargetResistance"])
+                                    if tuple(damage.flags(aid)) != tflags:
+                                        st["flags_bad"] += 1
+                                    if fin is None:
+                                        st["final_skipped"] += 1
+                                    elif fin == truth["damage"]:
+                                        st["final_ok"] += 1
+                                    else:
+                                        st["final_bad"] += 1
+                                        wrong[aid] += 1
+                                        if len(examples) < 12:
+                                            examples.append((deck, aid, pred[0],
+                                                             truth["damage"], fin))
                     obs = eng.select((agent if yi == 0 else oagent)(obs))
             except Exception:
                 pass
@@ -143,6 +168,10 @@ def main():
     print("  expected (coin)   %6d (%5.1f%%)   not checkable per-sample" % (st["expected"],
                                                                            100 * st["expected"] / n))
     print("  declined          %6d (%5.1f%%)" % (st["skipped"], 100 * st["skipped"] / n))
+    fn = st["final_ok"] + st["final_bad"] or 1
+    print("FINAL damage vs CalcDamage: %d checked, %d ok, WRONG %d, skipped %d | flag "
+          "mismatches %d" % (st["final_ok"] + st["final_bad"], st["final_ok"],
+                             st["final_bad"], st["final_skipped"], st["flags_bad"]))
     if wrong:
         print("\nWRONG (implement or drop these):")
         for aid, c in wrong.most_common(15):
@@ -161,7 +190,7 @@ def main():
     if a.out:
         json.dump({"st": dict(st), "wrong": {str(k): v for k, v in wrong.items()},
                    "skipped": {str(k): v for k, v in skipped.items()}}, open(a.out, "w"))
-    return 1 if st["exact_bad"] else 0
+    return 1 if st["exact_bad"] or st["final_bad"] or st["flags_bad"] else 0
 
 
 if __name__ == "__main__":

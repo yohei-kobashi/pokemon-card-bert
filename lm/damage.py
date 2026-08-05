@@ -30,6 +30,7 @@ import json
 import os
 
 _TABLE = None
+_FLAGS = None
 
 # EffectType values that write state.attackDamageChange. Names from Types.h.
 _FLAT = 73                  # AttackDamageChange              value, gated by a preceding cond
@@ -58,15 +59,27 @@ _P_ME, _P_ENEMY = 1, 2
 _T_STAGE2, _T_CARD_ID, _T_DAMAGE_COUNTER = 11, 20, 90
 
 
-def table():
-    global _TABLE
+def _load():
+    global _TABLE, _FLAGS
     if _TABLE is None:
         p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "damage_table.json")
         try:
-            _TABLE = {int(k): v for k, v in json.load(open(p)).items()}
+            raw = json.load(open(p))
+            _TABLE = {int(k): v for k, v in raw.get("dynamic", {}).items()}
+            _FLAGS = {int(k): v for k, v in raw.get("flags", {}).items()}
         except Exception:
-            _TABLE = {}
+            _TABLE, _FLAGS = {}, {}
+
+
+def table():
+    _load()
     return _TABLE
+
+
+def flags(attack_id):
+    """(noTargetEffect, noTargetWeakness, noTargetResistance) -- CalcDamage's three gates."""
+    _load()
+    return tuple(_FLAGS.get(attack_id, (0, 0, 0)))
 
 
 def _mons(obs, pi, areas):
@@ -223,3 +236,64 @@ def base_damage(obs, dec, attacker_serial, attack_id, me_pi):
             dmg += c["takeAttackDamagePreTurn"] * coin_gate
         # every other effect type does not touch attackDamageChange (asserted by _WRITES_DAMAGE)
     return (int(round(dmg)), kind)
+
+
+def _res_hit(dec, attacker_serial, target_serial):
+    """Does the target's resistance apply to this attacker? ContainsEnergyType(resistance, atype).
+
+    Resistance has no live override field (unlike weakness/weaknessIndex), so it is the printed
+    value; the ATTACKER's type does have one (continual typeIndex), which _type_mask handles.
+    """
+    from lm import hidden, vocab
+    a = dec["cards"].get(attacker_serial)
+    t = dec["cards"].get(target_serial)
+    if a is None or t is None:
+        return False
+    tm = vocab._CARDS.get(t["cardId"])
+    if tm is None or not tm.resistance:
+        return False
+    amask = hidden._type_mask(a["cardId"], a["continual"])
+    return bool((1 << (tm.resistance - 1)) & amask)
+
+
+def final_damage(obs, dec, attacker_serial, target_serial, attack_id, attacker_pi):
+    """The damage this attack would actually LAND on `target_serial`, or (None, None).
+
+    base_damage (printed + dynamic) pushed through CalcDamage's pipeline: attacker deltas,
+    weakness x2, resistance -30, target deltas, immunity -- in the engine's order, honouring the
+    attack's noTargetEffect / noTargetWeakness / noTargetResistance gates (baked by
+    gen_damage_table). Verified against eng.calc_damage in tools/verify_base_damage.py.
+
+    kind "exact" means every input was a known count; "expected" carries a coin expectation
+    through the same pipeline, which is approximate around the x2/floor nonlinearities -- callers
+    should render it as `d~` and never mark it as a certain KO.
+    """
+    from lm import hidden
+    base, kind = base_damage(obs, dec, attacker_serial, attack_id, attacker_pi)
+    if base is None:
+        return (None, None)
+    f = hidden.attack_facts(obs, dec, attacker_pi, attacker_serial, target_serial, "active")
+    if f is None:
+        return (None, None)
+    no_effect, no_weak, no_res = flags(attack_id)
+    d = base
+    if d <= 0:
+        return (0, kind)
+    d += f["atk"]
+    if d <= 0:
+        return (0, kind)
+    if f["wk"] and not no_weak:
+        d *= 2
+    if not no_res and _res_hit(dec, attacker_serial, target_serial):
+        d -= 30
+        if d <= 0:
+            return (0, kind)
+    if not no_effect:
+        d += f["tgt"]
+        if f["zero"]:
+            d = 0
+        if d <= f["floor"]:
+            d = 0
+        if f.get("cap", 0) > 0 and f["cap"] <= d:
+            d = 0
+    return (max(0, int(d)), kind)

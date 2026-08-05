@@ -16,6 +16,8 @@ from lm import costs, vocab
 from lm.actions import encode_option
 
 _TRAINER_KIND = {1: "ITEM", 2: "TOOL", 3: "SUP", 4: "STAD", 5: "NRG", 6: "SP-NRG"}
+# Special Energies whose effect still MATTERS while attached -- see the comment in _pk.
+_SPECIAL_ENERGY_LIVE = {9, 11, 12, 14, 17, 20}
 
 
 def _tok_multiset(ids):
@@ -214,6 +216,20 @@ def _pk(p, board_facts=False, obs=None, pi=None, extra=None, dec=None):
     tools = _ids(p.get("tools"))
     if tools:                                   # tool CARDS (Cape/Belt change HP/damage)
         s += "|" + ",".join(vocab.card_tok(t) for t in tools)
+    if dec is not None:
+        # SPECIAL energy identity (hidden_facts formats only), but ONLY the ones whose effect
+        # persists on the board: Mist ("prevent all effects"), Spiky ("2 counters back"), Legacy
+        # ("1 fewer Prize"), Rock Fighting, Boomerang (returns after the attack), Ignition
+        # (discards at end of turn). The energy letters carry only the PROVIDED type, so these
+        # collapse to a bare C/F -- indistinguishable from a Basic energy. Pure providers
+        # (Telepath, Enriching: attach-time effect already spent; Neo Upper / Prism / TR: the
+        # provision is already visible as */TR letters; Grow Grass: +20 HP already baked into
+        # maxHp by the engine) are deliberately NOT rendered -- they were half the cost of this
+        # feature for no live information.
+        sp = [e["id"] for e in (p.get("energyCards") or [])
+              if isinstance(e, dict) and e.get("id") in _SPECIAL_ENERGY_LIVE]
+        if sp:
+            s += "|" + _tok_multiset(sp)
     if board_facts:
         s += _board_facts(p, obs, pi, dec)
     if extra:
@@ -292,38 +308,77 @@ def _identify(obs, yi, deck_name=None):
         return ""
 
 
-def _attack_damage_notes(obs, dec):
-    """`{"attack:a123": " d:250"}` -- the base damage that attack would ACTUALLY use.
+def _menu_notes(obs, dec):
+    """Per-option annotations: `{"attack:1092": " d:500!", "attach:c9@BENCH1": " n:2"}`.
 
-    31.2% of offered attack options have damage that moves (bench count, hand size, damage
-    counters, prizes taken, attached energy, coins), and with glossary='none' the prompt carries
-    no damage at all -- the `a123` token cannot encode a value that changes every turn. `d:` is
-    exact, `d~` is an expectation over coins, and an attack whose damage cannot be resolved
-    (a sub-select not yet made, an unimplemented condition) is left UNANNOTATED rather than
-    guessed. See lm/damage.py; tools/verify_base_damage.py checks it against the base damage the
-    engine actually used."""
-    from lm import damage as _damage
+    attack  the damage this attack would LAND on the defending Active -- base (dynamic damage
+            resolved: 31.2% of offered attacks move with bench/hand/counters/prizes/coins) pushed
+            through the full CalcDamage pipeline (weakness, resistance, target effects,
+            immunity). `d:` exact, with `!` when it KOs the defender as the board stands; `d~` an
+            expectation over coins, never marked `!`. Falls back to the BASE number when there is
+            no defender to price against, and to silence when not derivable at all -- a wrong
+            number is worse than none (the retreat-cost lesson).
+    attach  ` n:K` -- the target's `need` AFTER this attach (engine arithmetic, including what
+            special energies actually provide). Energy attachment is the one decision kind
+            measured AT CHANCE (top1 16-29% vs 14%), and the menu today says nothing about what
+            an attach accomplishes.
+
+    See lm/damage.py / lm/hidden.py; verified by tools/verify_base_damage.py and
+    tools/verify_menu_notes.py."""
+    from lm import damage as _damage, hidden as _hidden
     cur = obs.get("current") or {}
     yi = cur.get("yourIndex", 0)
     try:
         act = ((cur["players"][yi].get("active") or [None])[0])
     except (KeyError, IndexError, TypeError):
         return {}
-    if not act or act.get("serial") is None:
-        return {}
+    opp = None
+    try:
+        opp = ((cur["players"][1 - yi].get("active") or [None])[0])
+    except (KeyError, IndexError, TypeError):
+        pass
     out = {}
     for o in ((obs.get("select") or {}).get("option") or []):
         t = encode_option(o, obs)
-        if not t.startswith("attack:") or t in out:
+        if t in out:
             continue
-        try:
-            aid = int(t.split(":")[1])
-        except ValueError:
-            continue
-        val, kind = _damage.base_damage(obs, dec, act["serial"], aid, yi)
-        if val is None:
-            continue
-        out[t] = " d:%d" % val if kind == "exact" else " d~%d" % val
+        if t.startswith("attack:") and act and act.get("serial") is not None:
+            try:
+                aid = int(t.split(":")[1])
+            except ValueError:
+                continue
+            val = kind = None
+            if opp and opp.get("serial") is not None:
+                val, kind = _damage.final_damage(obs, dec, act["serial"], opp["serial"],
+                                                 aid, yi)
+            if val is None:
+                val, kind = _damage.base_damage(obs, dec, act["serial"], aid, yi)
+            if val is None:
+                continue
+            if kind == "exact":
+                ko = opp is not None and val >= (opp.get("hp") or 0) and (opp.get("hp") or 0) > 0
+                out[t] = " d:%d%s" % (val, "!" if ko else "")
+            else:
+                out[t] = " d~%d" % val
+        elif t.startswith("attach:c"):
+            area = o.get("inPlayArea")
+            idx = o.get("inPlayIndex")
+            key = {4: "active", 5: "bench"}.get(area)
+            if key is None:
+                continue
+            try:
+                target = (cur["players"][yi].get(key) or [])[idx or 0]
+            except (KeyError, IndexError, TypeError):
+                continue
+            if not target or target.get("serial") is None:
+                continue
+            try:
+                ecid = int(t.split(":c")[1].split("@")[0])
+            except (ValueError, IndexError):
+                continue
+            need = _hidden.post_attach_need(obs, dec, target["serial"], ecid)
+            if need is not None:
+                out[t] = " n:%d" % need
     return out
 
 
@@ -362,7 +417,7 @@ def render_options(obs, menu_dedup=False, dec=None):
     if menu_dedup:
         from lm.action_token import dedup_options
         texts = dedup_options(texts, obs)[0]
-    ann = _attack_damage_notes(obs, dec) if dec is not None else {}
+    ann = _menu_notes(obs, dec) if dec is not None else {}
     items = " ".join(f"{i}={t}{ann.get(t, '')}" for i, t in enumerate(texts))
     if mp and mp.get("allow_stop"):         # may pick no more (min already satisfied)
         items += f" {len(texts)}={STOP}"
