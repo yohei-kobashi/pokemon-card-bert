@@ -689,6 +689,9 @@ class BasePolicy:
     def act(self, obs_dict):
         from cg.api import to_observation_class
         obs = to_observation_class(obs_dict)
+        # keep the RAW dict alongside: lm/hidden decodes the engine's hidden effect state
+        # out of obs["search_begin_input"], which to_observation_class does not carry.
+        self._raw_obs = obs_dict
         if obs.select is None:
             return self.deck                      # deck-selection phase
         sel = obs.select
@@ -3246,6 +3249,10 @@ class DudunsparceBoxL2(BeatdownPolicy):
         return (a is not None and a.id == self._LOPUNNY
                 and self._pivot_turn == ctx.state.turn)
 
+    def _bench_froslass(self, ctx):
+        return next((v for v in ctx.me.bench
+                     if v.id == self._FROSLASS and v.energy_count >= 1), None)
+
     def decide_retreat(self, ctx):
         if ctx.retreat_idx is not None and not ctx.state.retreated:
             a = ctx.me.active
@@ -3256,6 +3263,12 @@ class DudunsparceBoxL2(BeatdownPolicy):
                     and self._bench_lopunny(ctx) is not None):
                 self._pivot_turn = ctx.state.turn
                 return [ctx.retreat_idx]
+            # A Lopunny stuck in front with one energy can only Gale Thrust for 60 -- its
+            # window closed the turn it arrived. Get out for an armed Froslass, unless the
+            # defender is a wall Froslass cannot hurt.
+            if (a is not None and a.id == self._LOPUNNY and self._pivot_turn != ctx.state.turn
+                    and a.energy_count <= 1 and self._bench_froslass(ctx) is not None):
+                return [ctx.retreat_idx]
         return BeatdownPolicy.decide_retreat(self, ctx)
 
     def decide_active(self, ctx, mode="setup"):
@@ -3264,6 +3277,14 @@ class DudunsparceBoxL2(BeatdownPolicy):
             for i, o in enumerate(ctx.sel.option):
                 if self._opt_pk_id(ctx, o) == self._LOPUNNY:
                     return [i]
+        # OTHERWISE PREFER FROSLASS. Measured over 42 games: Gale Thrust was used 226 times
+        # and its window was open on 6.2% of them, i.e. the deck's main attack was a 60 while
+        # Resentful Refrain -- one Water for 50 per card in the opponent's hand -- averaged
+        # 240 over its 31 uses. Lopunny parked in front is the losing line; it is a FINISHER
+        # reached by the pivot, not the body that stands there.
+        for i, o in enumerate(ctx.sel.option):
+            if self._opt_pk_id(ctx, o) == self._FROSLASS:
+                return [i]
         return BeatdownPolicy.decide_active(self, ctx, mode)
 
     def decide_attack(self, ctx):

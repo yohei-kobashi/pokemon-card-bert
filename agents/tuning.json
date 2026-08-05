@@ -993,7 +993,7 @@
  "dudunsparce_box": {
   "_note": "scouted 2026-08-05 top-500: the cluster that holds ranks 6 and 9, whose 60/60 reconstructions are IDENTICAL. 13 teams matched nothing of ours above 41%, and a further 14 classified as mega_lopunny at only 59-65% carry the same engine -- so our mega_lopunny is a DIFFERENT deck from the live one. See docs/meta/leaderboard_top500_2026-08-05.md",
   "_plan": "Dudunsparce is a REUSABLE draw engine: its ability draws 3 and then shuffles itself back into the deck, so the Dunsparce line is dug up again and again (Buddy-Buddy Poffin / Poke Pad / Ultra Ball all fetch it). The payoff is Mega Lopunny ex's Gale Thrust -- 60, +170 MORE if it moved from the Bench to the Active Spot this turn, i.e. 230 for one Energy -- which is why Air Balloon x3 (-2 retreat) is in here: retreat something cheap, drop Lopunny in, swing. Mega Froslass ex is the second angle, 50 per card in the opponent's HAND. Mist Energy protects the Mega from attack EFFECTS and Battle Cage protects the bench from spread.",
-  "_tuning": "CONFIG-ONLY pass 1, measured. Gale Thrust landed 60 rather than 230 on 95.2% of its 83 uses (the +170 needs Lopunny to have moved Bench->Active THAT turn, and the engine parks it Active instead), while Mega Froslass ex's Resentful Refrain averaged 308 damage over its 6 uses. The engine already prices 'for each card in your opponent's hand' correctly (engine_v2:_ctx_each_count), so this is a PRIORITY problem, not a valuation one: Froslass is now the primary focus and Lopunny the secondary. PASS 2: the L2 pivot beat config-only by +4.37pt +- 1.96 (t +2.23, 640 games) but the mechanism check said the Gale Thrust window only went 3.5% -> 7.4%, so the gain was NOT the pivot. The real blocker is upstream: a benched Lopunny never gets energy, so there is nothing to pivot into. line.support_energy arms it on the bench (engine_v2:_support_attach), which is what that key exists for.",
+  "_tuning": "CONFIG-ONLY pass 1, measured. Gale Thrust landed 60 rather than 230 on 95.2% of its 83 uses (the +170 needs Lopunny to have moved Bench->Active THAT turn, and the engine parks it Active instead), while Mega Froslass ex's Resentful Refrain averaged 308 damage over its 6 uses. The engine already prices 'for each card in your opponent's hand' correctly (engine_v2:_ctx_each_count), so this is a PRIORITY problem, not a valuation one: Froslass is now the primary focus and Lopunny the secondary. PASS 2: the L2 pivot beat config-only by +4.37pt +- 1.96 (t +2.23, 640 games) but the mechanism check said the Gale Thrust window only went 3.5% -> 7.4%, so the gain was NOT the pivot. The real blocker is upstream: a benched Lopunny never gets energy, so there is nothing to pivot into. line.support_energy arms it on the bench (engine_v2:_support_attach), which is what that key exists for. PASS 3: promoting FROSLASS instead of Lopunny (Gale Thrust was 226 uses at a 6.2% window, i.e. a 60; Resentful Refrain averaged 240) took the deck 26.4% -> 45.0% and the paired gap over config-only to +9.53pt +- 2.24 (t +4.26). PASS 4 tried true-damage attack selection and a wall-aware Spiky Hopper line: the first never fired (one energy leaves Refrain the only legal attack) and the second was +0.3pt over 640 games. Both REVERTED.",
   "arch_mixin": true,
   "archetype": "midrange",
   "bench_target": 4,
@@ -1040,16 +1040,13 @@
   "line": {
    "bench_target": 4,
    "big": [
-    861,
-    849
+    861
    ],
    "discard_fuel": [],
    "focus": [
-    861,
-    849
+    861
    ],
    "need": {
-    "849": 1,
     "861": 1
    },
    "stadiums": [
@@ -1061,8 +1058,7 @@
    "support_gate": "loose"
   },
   "main_attackers": [
-   861,
-   849
+   861
   ],
   "mega_heal_cards": [
    1229
