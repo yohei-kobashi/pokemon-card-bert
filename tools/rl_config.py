@@ -1,14 +1,34 @@
-"""RL curriculum + hyper-parameters for the post-SFT LM agent (docs/rl_design.md).
+"""RL curriculum + hyper-parameters for the post-SFT LM agent.
 
-TWO independent knobs (§8 of the design):
+TWO independent knobs:
   O = opponent distribution  (THE OBJECTIVE — who we must beat)
   P = pilot set              (which decks the LEARNING policy plays)
 
-Stage A  broad climb          P = all shippable decks;  O = heuristic-heavy -> self-play
-Stage B  meta realignment     P = all;                  O = reweighted to the LIVE meta
-Stage C  targeted special.    P = the TARGET deck(s) ONLY;  O = LIVE meta, NOT narrowed
-         ^ IMPORTANT: Stage C narrows only the PILOT. The OPPONENT distribution stays the
-           live-frequency mix (you must still beat the whole live field with the target deck).
+CURRENT CURRICULUM — two stages (user 2026-08-06, docs/rl_stages_v2.md):
+
+  Stage 1  broad-11    P = STAGE_C_TARGETS (11);  O = the same 11, live-weighted
+                       an 11x11 grid; the diagonal (MIRROR_FRAC) is same-shuffle mirror
+  Stage 2  dragapult   P = {dragapult, dragapult_dusknoir};  O = the same 11
+
+  Both stages learn from PLAYOUT-MEASURED Q labels (docs/rl_mirror_design.md), not from
+  GRPO's per-game credit. That is the whole point of the revision: a uniform per-game
+  reward is the DIAGNOSED cause of the two 12-round plateaus
+  ([[rl-stage-a-plateau-diagnosis]], [[rl-plateau-five-refutations]]), so repeating it a
+  third time is a refuted experiment, not a new one.
+
+DEPRECATED — Stage A/B/C (2026-07-22 .. 2026-08-06). Kept so old runs can be reproduced;
+do not start new work on them.
+
+  Stage A  broad climb          P = all shippable decks;  O = heuristic-heavy -> self-play
+  Stage B  meta realignment     P = all;                  O = reweighted to the LIVE meta
+  Stage C  targeted special.    P = the TARGET deck(s) ONLY;  O = LIVE meta, NOT narrowed
+
+  Why A is retired: it went 12 rounds flat, twice. And the breadth it was buying was
+  illusory -- a training mix is ~77% base imitation pool covering all 65 decks, so the RL
+  share is ~23%. Spread over 65 decks that is 0.35% per deck; concentrated on 11 it is
+  2.05%, a 6x dose. Widening P never added breadth, it diluted the signal below resolution.
+  Catastrophic forgetting is structurally unlikely because the base share does that job.
+  Why B is retired: it only reweighted O to the live meta, which Stage 1 does from round 1.
 
 Everything here is data, editable per run. The loop (tools/rl_loop.sh) reads a stage name
 and asks this module for that stage's O, P, opponent-agent mix, and stop criterion.
@@ -88,33 +108,119 @@ MATCH_TARGET_WR = 50.0 + LM_ENGINE_DEFICIT
 
 # --- LIVE meta weights (opponent frequency) ---------------------------------------
 # Update from the latest scrape; unlisted decks share the residual mass uniformly.
-# REFRESHED 2026-07-23 from a top-500 leaderboard scout (tools/leaderboard_distribution.py,
-# 520 teams classified, ~96% covered). Big shifts vs the stale 2026-07 scrape: alakazam_nz
-# is now the #1 deck (0.21, was 0.08); base alakazam collapsed (0.30 -> 0.09); archaludon
-# (0.09) + cynthia_garchomp (0.05) newly present; mega_starmie (Mega Starmie ex/Froslass,
-# 0.02) added. See [[leaderboard-top100-meta-gap]] / [[prompt-reopt-resft-plan]].
+# REFRESHED 2026-08-06 from the 2026-08-05 top-500 scout
+# (docs/meta/leaderboard_top500_2026-08-05.md; raw JSON scratchpad_replays/distribution.json).
+# 494/500 teams classified, entries >= 0.004 cover 99.2% of them. `ogerpon_mono` and
+# `dudunsparce_box` were scouted as `OTHER:` -- the classifier predates those decks -- and are
+# folded back in by signature.
+#
+# Shifts vs the 2026-07-23 weights this replaces:
+#   marnie_grimmsnarl  0.172 -> 0.358   a THIRD of the ladder, up 2.1x
+#   alakazam_nz        0.212 -> 0.134   was #1, now #2; the Alakazam family roughly halved
+#   archaludon         0.094 -> 0.024   collapsed
+#   rockets_*          0.038 -> 0.020   and ZERO in the top 100 (see [[leaderboard-top100-meta-gap]])
+#   ogerpon_mono          --  -> 0.057  newly expressible
+#   dudunsparce_box       --  -> 0.024
+#   staryu / iono_bellibolt / dragapult_dusknoir dropped out (below 0.004)
+#
+# Weight is POPULATION share and says nothing about how high an archetype reaches -- see
+# STAGE_C_TARGETS below, where peak rank is the second criterion.
 LIVE_META = {
-    "alakazam_nz": 0.212, "marnie_grimmsnarl": 0.172, "archaludon": 0.094,
-    "alakazam": 0.086, "cynthia_garchomp": 0.048, "crustle": 0.048,
-    "alakazam_nz_fez": 0.046, "dragapult": 0.044, "crustle_geco": 0.038,
-    "mega_lucario": 0.036, "mega_starmie": 0.022, "rockets_mewtwo": 0.018,
-    "staryu": 0.018, "rockets_spidops": 0.016, "omatsuri": 0.01,
-    "comfey_yveltal": 0.01, "ns_zoroark": 0.008, "mega_lucario_tr": 0.008,
-    "crustle_stall": 0.006, "iono_bellibolt": 0.006, "dragapult_dusknoir": 0.004,
-    "mega_lopunny": 0.004, "hydrapple": 0.004, "rockets_honchkrow": 0.004,
+    "marnie_grimmsnarl": 0.358, "alakazam_nz": 0.134, "crustle_geco": 0.057,
+    "ogerpon_mono": 0.057, "crustle": 0.047, "alakazam": 0.040, "dragapult": 0.040,
+    "cynthia_garchomp": 0.038, "mega_lucario_tr": 0.028, "mega_lopunny": 0.028,
+    "mega_lucario": 0.028, "dudunsparce_box": 0.024, "archaludon": 0.024,
+    "omatsuri": 0.018, "alakazam_nz_fez": 0.010, "raging_bolt": 0.008,
+    "rockets_mewtwo": 0.008, "rockets_spidops": 0.008, "hydrapple": 0.006,
+    "mega_starmie": 0.006, "ns_zoroark": 0.006, "mega_venusaur": 0.004,
+    "crustle_stall": 0.004, "comfey_yveltal": 0.004, "rockets_honchkrow": 0.004,
 }
 
-# --- Stage-C target pilots (user-confirmed 2026-07-22; one RL run per target) ----------
-# Dragapult leads (human BDIF, high skill ceiling): BOTH the human-#1 "straight" build AND
-# the Dusknoir build — the latter patches the Grimmsnarl matchup (Dusclops/Dusknoir remove
-# Froslass -> 63% vs Grimmsnarl) for our Grimmsnarl-heavy LIVE field, while base dragapult
-# is the human-Tier-1 list that beats Alakazam (the 44% live giant). Both decks used AS-IS
-# (dragapult_dusknoir already ~95% matches the competitive Roman-G list). rockets_mewtwo +
-# rockets_honchkrow (competitive-rebuilt, [[rockets-honchkrow-competitive-rebuild]]) are the
-# two Team Rocket types; crustle/alakazam/marnie_grimmsnarl complete the live-field roster.
+# --- Stage-C target pilots (user-confirmed 2026-08-06; one RL run per target) ----------
+# ELEVEN decks, chosen off the 2026-08-05 top-500 scout so that the SAME set is both the RL
+# pilot roster (docs/rl_mirror_design.md) and the submission candidate list. Coverage:
+#
+#     393 / 500 of the top 500  = 78.6%      79 / 100 of the top 100      16 / 20 of the top 20
+#
+# Selected on TWO criteria, because usage count alone gets it wrong:
+#   population  how many opponents run it  -> marnie_grimmsnarl 177, alakazam_nz 66, ...
+#   frontier    how high the archetype gets -> mega_lucario_tr is only 14/500 but holds #2 AND
+#               #3 (lb 1186.6 / 1160.7), and our decks/mega_lucario_tr.csv matches those two
+#               builds at 1.00, so the whole gap there is piloting. It was nearly cut on
+#               headcount; peak rank is the signal that saved it.
+#
+# dragapult / dragapult_dusknoir stay from the 2026-07-22 roster (human BDIF, high skill
+# ceiling; the Dusknoir build patches the Grimmsnarl matchup for our Grimmsnarl-heavy field).
+# dragapult_dusknoir is the one member with ZERO leaderboard presence and is kept deliberately
+# as a submission candidate.
+#
+# DROPPED 2026-08-06: rockets_mewtwo, rockets_honchkrow. Team Rocket is 10/500 = 2.0% with
+# ZERO teams in the top 100 (best #123 at lb 985.0 vs a 1002.2 cutoff), down from #4 at 1185.1
+# in July. [[leaderboard-top100-meta-gap]]'s "Team Rocket is the missing package" is reversed
+# there; do not re-add on the strength of that paragraph.
+#
 # Opponents in Stage C are NOT narrowed — they stay the live-frequency field (see stage("C")).
-STAGE_C_TARGETS = ["dragapult", "dragapult_dusknoir", "rockets_mewtwo",
-                   "rockets_honchkrow", "crustle", "alakazam", "marnie_grimmsnarl"]
+STAGE_C_TARGETS = ["dragapult", "dragapult_dusknoir", "marnie_grimmsnarl",
+                   "alakazam_nz", "alakazam", "crustle_geco", "crustle",
+                   "ogerpon_mono", "dudunsparce_box", "cynthia_garchomp",
+                   "mega_lucario_tr"]
+
+# --- Two-stage curriculum knobs (docs/rl_stages_v2.md) --------------------------------
+# Stage 1 plays an 11x11 grid. MIRROR_FRAC is the share spent on the DIAGONAL (same deck
+# both seats, same shuffle order). It is not the objective -- the ladder is off-diagonal --
+# but the gate is a mirror paired screen, and mirror is the only setting whose null is
+# exactly 0 ([[mirror-shuffle-mode]]). Left to the weight product the diagonal would be
+# ~1/11 of a row and too thin to match the gate's distribution.
+MIRROR_FRAC = 0.25
+PLAYOUTS_PER_BRANCH = 16        # matches attach_label.py; below this the permutation null
+                                # rejects nearly everything and the round yields no labels
+
+# Share of Phase-1 state collection played by the RERANKER (DeBERTa) rather than the 4B
+# decoder. The 4B is the RL vehicle -- it is unshippable at the 197.66 MiB cap and is used
+# (a) to measure the method's ceiling cheaply and (b) as a data factory for DeBERTa. The Q
+# label does not care who collected the state, but two things do: the state distribution
+# (4B 53.5% vs DeBERTa 30.6% fleet mean are different policies reaching different boards)
+# and which decisions the low-margin filter selects. Round 1 should MEASURE the overlap
+# between the two models' selected branch points and then set this: high overlap -> 0.0,
+# low overlap -> raise it. 0.3 is the starting guess, not a measurement.
+DEBERTA_COLLECT_FRAC = 0.3
+
+# --- TIME BOX (user 2026-08-06: "4B の Stage 1+2 は3〜4日でどこまで行けるか") ----------
+# Competition deadline: 2026-08-16 23:59 UTC = 2026-08-17 08:59 JST (a Monday MORNING, so
+# Sunday is effectively the last working day).
+#
+# Round length is the MEASURED one, not an estimate. instance2, r6 -> r7, steady state
+# (excluding the one-off baseline re-screen):
+#
+#     screen 2.13h + collect/mix 1.75h + train 7.22h = 11.1h per round
+#
+# Phase 2 (branch + 16 playouts, ~3h) runs on instance1's CPU and never touches instance2's
+# critical path, so 11.1h is the whole budget unit. 2026-08-06 06:30 -> 2026-08-10 00:00 is
+# 89.5h = 8 rounds; budgeted as 7 (4 + 3) with one round of slack for slippage.
+#
+# THE CALENDAR STOP IS THE BINDING ONE. A plateau test that never fires would eat the entire
+# box and Stage 2 would never run. STAGE1_DEADLINE_UTC forces the handover whatever the
+# metric says.
+RL_DEADLINE_UTC = "2026-08-10T00:00:00Z"        # hard stop for ALL 4B RL
+STAGE1_DEADLINE_UTC = "2026-08-08T12:00:00Z"    # hand over to Stage 2 regardless of plateau
+STAGE1_ROUNDS = 4
+STAGE2_ROUNDS = 3
+
+# GATE SIZING -- the single easiest thing to get wrong in this revision.
+# Measured: i2 r7 scored +0.0077 +- 0.0114 on 63 decks x 40 games, so the per-deck delta
+# sd is 1.14*sqrt(63) = 9.05pt. Two independent 40-game screens would predict
+# sqrt(2*0.25/40) = 11.2pt, and 9.05 < 11.2, so the delta is SAMPLING-dominated and the
+# true between-deck component is ~0. sd therefore falls as 1/sqrt(G):
+#
+#     63 decks x  40 games = 2,520 games -> sd 9.05pt -> SE 1.14pt   (today)
+#     11 decks x 229 games = 2,519 games -> sd 3.78pt -> SE 1.14pt   (same budget, same SE)
+#     11 decks x  40 games =   440 games -> sd 9.05pt -> SE 2.73pt   (naive narrowing: 2.4x worse)
+#
+# So narrowing the gate to 11 decks is FREE if the games are redistributed, and useless if
+# they are not -- at SE 2.73 the "<= +1pt for 2 rounds" stop rule cannot fire on evidence.
+# Re-measure sd every 2 rounds: if Stage 1 lifts some decks and not others the true
+# between-deck component grows, sd climbs past 11.2pt, and deck COUNT starts to bind.
+GATE_GAMES_PER_DECK = 229
 
 
 # Stage-A FOCUS: strengthen the WEAK members of the submittable/meta set FIRST (user
@@ -153,6 +259,85 @@ def _stageA_pilot_weights(decks):
         s = sum(pw.values()) or 1.0
         pw = {d: w / s for d, w in pw.items()}
     return pw
+
+
+# Where the two-stage curriculum reads its headroom from. This is the LM's own mirror
+# screen (`mirror_match --a engine --b hf:<ckpt> --mirror`, merged), i.e. how well the
+# POLICY pilots each deck. Written by the loop after every gate.
+LM_SCREEN = os.path.join(ROOT, "evaluations", "lm_mirror_screen.json")
+
+# Which (deck, kind) DECISIONS the Q-label budget buys, as opposed to which decks the games are
+# played with. Produced by tools/retarget_cells.py from the observed gaps
+# (diag_lm_losses.py --targets) re-weighted by the counterfactual (price_targets.py, both sides).
+#
+# The re-weighting is not cosmetic. Priced 2026-08-06 on the six largest observed gaps:
+#
+#   end       the largest observed effect in the fleet (z -10.90 pooled over 11 decks) and NOT
+#             actionable on the side it was first priced -- where the LM declines to end its
+#             turn, declining is right (dQ -0.10 to -0.38). It IS actionable on the other side:
+#             where the LM ends, it should not have (pooled -0.0696, z -4.28 over 4 decks).
+#             The policy ends its turn too early; it does not decline too often.
+#   evolve    mega_lucario_tr, the one cell that is a mistake on the DECLINE side (+0.079,
+#             z +2.88; take side agrees at +0.082). Its observed gap says winners evolve 29.9pp
+#             LESS, so here the correlation and the counterfactual point opposite ways and the
+#             counterfactual is the one that survives a controlled test.
+#
+# Regenerate whenever a new pricing run lands; the loop reads the file, not this constant.
+QLABEL_TARGETS = os.path.join(ROOT, "evaluations", "lm_targets_priced.json")
+
+# No single (deck, kind) cell may exceed this share of a round's branch budget. Uncapped, the
+# one validated cell took 43.9%, which is the shape [[narrow-dagger-overfits]] measured: one-deck
+# concentration moved the target +11.9pt and the fleet -2.75pt.
+QLABEL_MAX_CELL_SHARE = 0.25
+# Cap on the valued share of a training round's mix. The valued stream's size is set by how many
+# batches happened to arrive from the other machine, so without this a slow round silently
+# raises the fraction. 0.10 is where the attach labels sat when they paid off (9.2% of v40).
+VALUED_MAX_FRAC = 0.10
+
+
+def _stage12_pilot_weights(decks, screen_path=None):
+    """Headroom weights for Stage 1, measured as the LM's OWN winrate per deck.
+
+    NOT rl_ratings. That table is engine_v2's deck-vs-deck round-robin -- how strong the
+    DECK is -- and using it here inverts the allocation. Measured on the real numbers:
+
+        deck                rl_ratings  LM mirror   old w    correct
+        dragapult_dusknoir     34.8       57.5%     0.303    least (LM's 2nd best)
+        dragapult              46.9       30.0%     0.157    MOST  (LM's worst)
+        dudunsparce_box         --        37.5%     0.060    2nd   (LM's 2nd worst)
+
+    rl_ratings would have spent 30% of the RL on the deck the LM already plays second best
+    and 6% on the second worst, because a weak DECK and a badly-PILOTED deck are different
+    things ([[fleet-roundrobin-and-weak-decks]], [[weak-decks-pilot-vs-structural]]) and RL
+    only moves the second. rl_ratings stays in use for Stage A's difficulty MATCHMAKING,
+    which is a question about the deck.
+
+    Falls back to uniform when no screen exists, and says so -- a silent fallback here looks
+    exactly like a working run.
+    """
+    p = screen_path or LM_SCREEN
+    wr = {}
+    try:
+        with open(p) as f:
+            for d, v in (json.load(f).get("decks") or {}).items():
+                if isinstance(v, dict) and v.get("p") is not None:
+                    wr[d] = 100.0 * float(v["p"])
+    except Exception:
+        pass
+    if not wr:
+        import sys
+        print("[rl_config] no LM screen at %s -- Stage-1 pilot weights fall back to UNIFORM. "
+              "Headroom targeting is OFF until the loop writes one." % p, file=sys.stderr)
+        return {d: 1.0 / len(decks) for d in decks}
+    missing = [d for d in decks if d not in wr]
+    if missing:
+        import sys
+        print("[rl_config] LM screen has no entry for %s -- treated as neutral (%.0f%%)."
+              % (", ".join(missing), STAGE_A_TARGET_WR), file=sys.stderr)
+    head = {d: max(STAGE_A_HEADROOM_FLOOR, STAGE_A_TARGET_WR - wr.get(d, STAGE_A_TARGET_WR))
+            for d in decks}
+    tot = sum(head.values()) or 1.0
+    return {d: h / tot for d, h in head.items()}
 
 
 def _stageB_pilot_weights(decks):
@@ -204,6 +389,82 @@ def stage(name, target=None):
         reward_win=1.0, reward_loss=-1.0,
         format_penalty=0.1,        # illegal/unparseable action token (should be ~0: we score legal cands)
     )
+
+    # ---- CURRENT: the two-stage curriculum (docs/rl_stages_v2.md) --------------------
+    if name in ("1", "2"):
+        tgts = [d for d in STAGE_C_TARGETS if d in set(decks)]
+        # O = the 11, by live frequency, renormalised. dragapult_dusknoir has ZERO
+        # leaderboard presence so it never appears as an opponent -- correct, it is a pilot
+        # we may submit, not a deck the field runs.
+        opp = {d: LIVE_META.get(d, 0.0) for d in tgts}
+        s = sum(opp.values())
+        opp = {d: w / s for d, w in opp.items()} if s > 0 else {d: 1.0 / len(tgts) for d in tgts}
+
+        if name == "2":
+            # OPTIONAL TAIL (docs/rl_stages_v2.md, "recommended deviation"). The 11 are 78.6%
+            # of the top 500; the missing 21.4% is real ladder. Off by default because the
+            # user specified "the 11". Opponents outside the 11 have no competent LM pilot
+            # after Stage 1, so they are played by engine_v2 -- which is why they are a
+            # separate, reportable slice rather than mixed in silently.
+            tail = float(os.environ.get("RL_STAGE2_TAIL", "0.0"))
+            if tail > 0:
+                rest = {d: LIVE_META.get(d, 0.0) for d in decks if d not in set(tgts)}
+                rs = sum(rest.values())
+                if rs > 0:
+                    opp = {d: w * (1.0 - tail) for d, w in opp.items()}
+                    for d, w in rest.items():
+                        opp[d] = opp.get(d, 0.0) + tail * w / rs
+
+        if name == "1":
+            # headroom = the LM's OWN mirror screen, not rl_ratings (see _stage12_pilot_weights)
+            pilots, pw = tgts, _stage12_pilot_weights(tgts)
+            rounds, gpm, temp = STAGE1_ROUNDS, 24, 1.0
+            # THREE stop conditions, and the calendar one is not a safety net -- it is the
+            # binding one. Without it a plateau test that never fires eats the whole box and
+            # Stage 2 never runs at all.
+            stop = dict(kind="plateau", metric="mirror_paired_11",
+                        window=2, min_slope=0.01,           # <=+1pt for 2 rounds (SE 1.14pt)
+                        also_stop_if="dragapult>=0.50",
+                        hard_deadline_utc=STAGE1_DEADLINE_UTC)
+        else:
+            pilots = [d for d in ("dragapult", "dragapult_dusknoir") if d in set(decks)]
+            pw = {d: 1.0 / len(pilots) for d in pilots}
+            rounds, gpm, temp = STAGE2_ROUNDS, 64, 0.9  # 20 cells x 64 = 1,280 games/round
+            stop = dict(kind="live_or_plateau", metric="live_kaggle_or_field",
+                        window=3, min_slope=0.005,
+                        hard_deadline_utc=RL_DEADLINE_UTC)
+        return dict(common,
+            stage=name, precision="bf16",
+            pilots=pilots, opponents=opp, pilot_weights=pw,
+            sampling="weighted",
+            games_per_matchup=gpm,
+            # Labels come from playouts, so the opponent only has to be COMPETENT, not
+            # learning. The 11 all have LM pilots by construction.
+            opp_agent_mix=dict(heuristic=0.10, lm_selfplay=0.90),
+            temperature=temp,
+            max_rounds=rounds,
+            # Data recipe: this curriculum is Q-labelled, not GRPO. rl_rollout reads these.
+            label="playout_q",
+            mirror_frac=MIRROR_FRAC if name == "1" else 0.0,
+            playouts_per_branch=PLAYOUTS_PER_BRANCH,
+            # WHICH DECISIONS the branch budget buys, priced rather than merely observed.
+            qlabel_targets=QLABEL_TARGETS,
+            qlabel_max_cell_share=QLABEL_MAX_CELL_SHARE,
+            valued_max_frac=VALUED_MAX_FRAC,
+            # Phase-1 state collection is split between the two models. The Q LABEL is
+            # pilot-independent (16 engine_v2 playouts), which is why the 4B may generate
+            # data the DeBERTa trains on and why this is NOT the killed distillation branch
+            # ([[teacher-9b-adds-nothing]] killed using a big model's OPINION as the label).
+            # What DOES stay 4B-shaped is the STATE distribution and which decisions the
+            # margin filter picks, so a slice is collected with the reranker itself.
+            collect_mix=dict(decoder=1.0 - DEBERTA_COLLECT_FRAC,
+                             reranker=DEBERTA_COLLECT_FRAC),
+            # Gate: 11 decks needs ~229 games EACH to hold the paired SE that 63x40 gave.
+            # See docs/rl_stages_v2.md -- narrowing the gate without rescaling games silently
+            # triples the SE and makes the +-1pt stop rule undecidable.
+            eval_decks=tgts, eval_games=GATE_GAMES_PER_DECK,
+            stop=stop,
+        )
 
     if name == "A":
         # Broad climb. Heuristic-heavy opponents give a CLIMBABLE gradient (fresh-SFT

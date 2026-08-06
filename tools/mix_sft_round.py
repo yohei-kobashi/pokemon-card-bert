@@ -63,6 +63,13 @@ def main():
                          "not the same -- but if round 2's screen regresses on the decks that "
                          "were NOT targeted, this is the first knob to turn.")
     ap.add_argument("--valued", default="", help="comma-separated, used once each")
+    ap.add_argument("--valued-max-frac", type=float, default=0.10,
+                    help="cap the valued share the same way. Unlike DAgger this is capped BY "
+                         "DEFAULT, because the valued stream is produced by a loop on the other "
+                         "machine and its size is set by how many batches happened to land -- a "
+                         "slow training round quietly raises the fraction with no decision "
+                         "having been made. 0.10 is where the attach labels sat when they paid "
+                         "off (9.2% of the v40 i2 mix). 0 = uncapped.")
     ap.add_argument("--seed", type=int, required=True,
                     help="the ROUND number -- a fixed seed makes the base a constant")
     ap.add_argument("--out", required=True)
@@ -75,6 +82,12 @@ def main():
 
     print("valued:", flush=True)
     valued = read_all(a.valued.split(","))
+    if a.valued_max_frac > 0 and valued:
+        cap = int(a.valued_max_frac * a.base_n / max(1e-9, 1.0 - a.valued_max_frac))
+        if cap < len(valued):
+            print("  capped %d -> %d rows (%.1f%% of the round)"
+                  % (len(valued), cap, 100 * a.valued_max_frac), flush=True)
+            valued = rng.sample(valued, cap)
     print("dagger:", flush=True)
     dagger = read_all(a.dagger.split(","))
     if a.dagger_max_frac > 0 and dagger:
