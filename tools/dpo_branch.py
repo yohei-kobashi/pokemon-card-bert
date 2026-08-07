@@ -137,8 +137,40 @@ def _one_game(job):
                         if labelable:
                             st["drop_neutral"] += 1
                     else:
-                        iw, il = sels[best][0], sels[1 - best][0]
+                        iw_raw, il_raw = sels[best][0], sels[1 - best][0]
                         state = serialize_stateless(obs, deck_ids=ids, deck_name=deck, **fmt)
+                        # PROMPT_FMT renders the menu DEDUPED (menu_dedup=True), so a raw obs
+                        # index is a coordinate in the wrong space -- 20% land past the end and
+                        # are at least visibly dropped; the rest silently point at whatever
+                        # slid into that position. valued_to_sft named this exact failure ("a
+                        # target index that points at the wrong option is invisible in
+                        # training") and its fix is reused here: match the ACT through
+                        # canon_key into the menu the prompt actually shows.
+                        from lm.actions import encode_option as _enc
+                        from lm.action_token import canon_key, slot_map_from_state
+                        from valued_to_sft import menu_of
+                        menu = menu_of(state)
+                        if menu is None:
+                            st["drop_no_menu"] += 1
+                            obs = eng.select(pick)
+                            if obs is None:
+                                break
+                            t += 1
+                            continue
+                        slots = slot_map_from_state(state)
+                        mkeys = [canon_key(x, slots) for x in menu]
+
+                        def _midx(raw_i):
+                            want = canon_key(_enc(raw[raw_i], obs), slots)
+                            return next((i for i, k in enumerate(mkeys) if k == want), None)
+                        iw, il = _midx(iw_raw), _midx(il_raw)
+                        if iw is None or il is None or iw == il:
+                            st["drop_menu_match"] += 1
+                            obs = eng.select(pick)
+                            if obs is None:
+                                break
+                            t += 1
+                            continue
                         out.append({
                             "prompt": ACT + state, "tw": str(iw), "tl": str(il),
                             "qw": round(means[best], 4), "ql": round(means[1 - best], 4),
