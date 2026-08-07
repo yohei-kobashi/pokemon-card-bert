@@ -202,6 +202,9 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--budget", type=int, default=8000, help="total branch points")
     ap.add_argument("--per-game", type=int, default=3)
+    ap.add_argument("--no-seat-fair", dest="seat_fair", action="store_false",
+                    help="spend the budget by margin alone, which gives the first seat ~2/3 "
+                         "of it (see the selection block). Kept only to reproduce rounds 1-2.")
     ap.add_argument("--margin-min", type=float, default=0.01,
                     help="skip margins below this. A margin of exactly 0 is two candidates the "
                          "scorer cannot tell apart AT ALL -- overwhelmingly two genuinely "
@@ -237,33 +240,49 @@ def main():
     # Lowest-margin decisions first, budgeted with per-deck fairness: interleave the decks'
     # own margin-sorted lists so one deck's cheap uncertainty cannot eat the whole budget
     # ([[narrow-dagger-overfits]] is the shape that guards against).
+    #
+    # THE BUCKET IS (deck, SEAT), not deck. Measured on round 2's traces: the decisions
+    # themselves split 51.9/48.1 across seats, but the policy is systematically LESS certain
+    # when it moves first (margin p50 11.50 at seat0 vs 15.75 at seat1), so a pure
+    # lowest-margin cut hands seat0 67.5% of the budget, and the label gate -- which drops a
+    # branch point when the playouts cannot separate the two candidates, i.e. when the
+    # position is already decided -- widens it again to 75/25 in the pairs. Round 1's entire
+    # gate gain was seat0 (+4.46pt) with seat1 flat (-0.53pt): the second seat was not being
+    # trained. The live ladder alternates seats, so that is half of every game left on the
+    # table. Splitting the per-game cut and the interleave by seat costs nothing and makes
+    # the budget spend the same on both.
+    seats = (0, 1) if a.seat_fair else (0,)
+    per_game_seat = max(1, a.per_game // len(seats))
     per_deck = collections.defaultdict(list)
     for (deck, seed), g in games.items():
-        cands = []
+        cands = collections.defaultdict(list)
         for t, m in enumerate(g["meta"]):
             seat, margin, alt, nc = m[0], m[1], m[2], m[3]
             if margin is not None and alt is not None and margin >= a.margin_min:
-                cands.append((margin, t, alt, nc))
-        cands.sort()
-        for margin, t, alt, nc in cands[:a.per_game]:
-            per_deck[deck].append((margin, seed, t, alt, nc))
-    for deck in per_deck:
-        per_deck[deck].sort()
-    chosen, i = [], 0
+                cands[seat if a.seat_fair else 0].append((margin, t, alt, nc))
+        for seat, cl in cands.items():
+            cl.sort()
+            for margin, t, alt, nc in cl[:per_game_seat]:
+                per_deck[(deck, seat)].append((margin, seed, t, alt, nc))
+    for k in per_deck:
+        per_deck[k].sort()
+    chosen, picked, i = [], collections.Counter(), 0
     while len(chosen) < a.budget:
         added = False
-        for deck in sorted(per_deck):
-            if i < len(per_deck[deck]):
-                chosen.append((deck,) + per_deck[deck][i])
+        for k in sorted(per_deck):
+            if i < len(per_deck[k]):
+                chosen.append((k[0],) + per_deck[k][i])
+                picked[k[1]] += 1
                 added = True
                 if len(chosen) >= a.budget:
                     break
         if not added:
             break
         i += 1
-    print("selected %d branch points over %d decks (margin p50 %.3f)"
-          % (len(chosen), len(per_deck),
-             sorted(c[1] for c in chosen)[len(chosen) // 2] if chosen else 0.0), flush=True)
+    print("selected %d branch points over %d decks (margin p50 %.3f) | seat split %s"
+          % (len(chosen), len({k[0] for k in per_deck}),
+             sorted(c[1] for c in chosen)[len(chosen) // 2] if chosen else 0.0,
+             " ".join("s%d %d" % (s, n) for s, n in sorted(picked.items()))), flush=True)
 
     by_game = collections.defaultdict(list)
     for deck, margin, seed, t, alt, nc in chosen:
