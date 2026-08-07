@@ -50,6 +50,12 @@ if [ "$WAIT" = trained ]; then
   grep -q "LPT\|least work so far" "$SCRIPT.new" \
     || { say "staged script has no cost-balanced sharding -- refusing"; exit 1; }
 fi
+# The stage happens when the watcher ARMS, not when it swaps, so a fix written to $SRC after
+# arming would be silently left behind. These greps are what catches that.
+grep -q "base taper step" "$SCRIPT.new" \
+  || { say "staged script has no base taper -- refusing"; exit 1; }
+grep -q 'max-samples "\$RTOTAL"' "$SCRIPT.new" \
+  || { say "staged script still runs to the deadline, so the taper would only add epochs"; exit 1; }
 say "staged the fixed loop at $SCRIPT.new"
 
 # NOT a test on $FROM/model.safetensors: the loop copies the previous checkpoint into $OUT at the

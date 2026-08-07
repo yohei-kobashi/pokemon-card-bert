@@ -166,6 +166,32 @@ MAX_GAMES=${MAX_GAMES:-400}
 # 320k of them, so this model is data-starved rather than over-fit: at 150k a five-hour round is
 # ~4 epochs over the same slice, at 300k it is ~1.3 epochs over twice as much fresh base.
 TOTAL=${TOTAL:-300000}
+# ---- the base taper -----------------------------------------------------------------------
+# A round is 90% base, 5% DAgger, 5% valued, and it is bound by --deadline-h, not by the data:
+# round 3 saw 310,529 rows of a 300,000-row mix in five hours = 1.03 epochs. So five of every
+# five and a half hours go to re-delivering base rows the model has already been trained on, to
+# carry 15,000 rows of new signal.
+#
+# The base cannot simply be cut: valued-only training has destroyed a run before, and 85% base
+# is the floor that came out of it. So the base TAPERS -- 20,000 rows per round -- and stops at
+# the floor. Gradual on purpose: a step change confounds "smaller base helped" with "smaller
+# base hurt starting somewhere", and one round per step keeps those separable.
+#
+#     round   5       6       7       8       9+
+#     base  250k    230k    210k    190k    170k   (floor: 170k/200k = 85.0%)
+#     total 280k    260k    240k    220k    200k
+#     epoch 270m    251m    231m    212m    193m   (at the measured 17.3 rec/s)
+#
+# DAgger and valued stay at 15,000 rows ABSOLUTE. They are the reason the round exists, and
+# mix_v40 takes them as fractions of the total, so the fractions are recomputed each round --
+# leaving them at 0.05 would shrink the signal along with the base, which is the one thing this
+# change must not do.
+DAGGER_N=${DAGGER_N:-15000}
+VALUED_N=${VALUED_N:-15000}
+BASE_N0=${BASE_N0:-270000}
+BASE_STEP=${BASE_STEP:-20000}
+BASE_MIN=${BASE_MIN:-170000}     # 170k/(170k+30k) = 85.0%, the documented floor
+BASE_FROM=${BASE_FROM:-5}        # first round that tapers
 DEADLINE_H=${DEADLINE_H:-24}
 MARGIN=${MARGIN:-0.5}
 LR=${LR:-1e-5}
@@ -403,15 +429,40 @@ print(','.join(pick))
       || { say "collect FAILED -- stopping"; break; }
 
   MIX=$REPO/data/rerank/${KIND}_r$ROUND.jsonl.gz
+
+  # Taper the base for this round, holding the DAgger and valued counts fixed.
+  RSTEPS=0
+  [ "$ROUND" -ge "$BASE_FROM" ] && RSTEPS=$(( ROUND - BASE_FROM + 1 ))
+  BASE_N=$(( BASE_N0 - BASE_STEP * RSTEPS ))
+  [ "$BASE_N" -lt "$BASE_MIN" ] && BASE_N=$BASE_MIN
+  if [ "$RSTEPS" -gt 0 ]; then
+    RTOTAL=$(( BASE_N + DAGGER_N + VALUED_N ))
+    RRATIO=$(python3 -c "print('%.6f' % ($DAGGER_N / $RTOTAL))")
+    # VALUED_FRAC 0 means the valued files are absent or in the wrong prompt format; the taper
+    # must not switch them on behind that decision.
+    RVFRAC=0
+    [ "$(python3 -c "print(1 if float('$VALUED_FRAC') > 0 else 0)")" = 1 ] \
+      && RVFRAC=$(python3 -c "print('%.6f' % ($VALUED_N / $RTOTAL))")
+    say "base taper step $RSTEPS: base $BASE_N | total $RTOTAL | base share $(python3 -c "print('%.1f%%' % (100*$BASE_N/$RTOTAL))")"
+  else
+    RTOTAL=$TOTAL; RRATIO=$RATIO; RVFRAC=$VALUED_FRAC
+  fi
+
   # A DIFFERENT base sample every round. The reservoir is seeded, so without this every round
   # trains on the same ~12% slice of the 2.87M pool and the rounds differ only by their DAgger --
   # the base contribution would be a constant, not a sample.
   python3 tools/mix_v40.py --base "$BASE" --dagger "$DAG" --valued "$VALUED" \
-      --dagger-frac "$RATIO" --valued-frac "$VALUED_FRAC" --total "$TOTAL" \
+      --dagger-frac "$RRATIO" --valued-frac "$RVFRAC" --total "$RTOTAL" \
       --seed "$ROUND" --out "$MIX" \
       || { say "mix FAILED -- stopping"; break; }
 
   # ---- CONTINUE from the current model ---------------------------------------------------
+  # --max-samples IS THE ROUND LENGTH NOW, and that is what makes the taper mean anything. It
+  # used to be 600,000 against a 300,000-row mix, so the round always ran to --deadline-h 5 and a
+  # smaller mix would have bought more EPOCHS, not a shorter round -- the opposite of the point.
+  # At $RTOTAL the round is exactly one epoch and the deadline is a guard. Neutral at today's
+  # size: round 3 stopped at 310,529 rows of 300,000 when the clock ran out, so one epoch is
+  # what it was already doing.
   # train_rerank --resume reads the model out of --out, so the checkpoint being continued is
   # copied in first. rr_progress.json must NOT come with it: it records how many samples the
   # PREVIOUS round saw and would fast-forward past this round's entire mix.
@@ -423,7 +474,7 @@ print(','.join(pick))
       || { say "STOP: $OUT is not a usable checkpoint to continue from"; break; }
   export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
   python3 tools/train_rerank.py --data "$MIX" --out "$OUT" --resume \
-      --deadline-h 5 --max-samples 600000 --lr "$LR" --pair-batch 32 --accum 12 --max-len "$MAXLEN" \
+      --deadline-h 5 --max-samples "$RTOTAL" --lr "$LR" --pair-batch 32 --accum 12 --max-len "$MAXLEN" \
       --eval-n 2000 --grad-ckpt --margin-weight "$MARGIN" \
       || { say "train FAILED -- stopping"; break; }
   [ -f "$OUT/model.safetensors" ] || { say "no model saved -- stopping"; break; }
