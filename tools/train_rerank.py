@@ -128,6 +128,8 @@ def main():
     ap.add_argument("--max-samples", type=int, default=800000)
     ap.add_argument("--eval-n", type=int, default=2000)
     ap.add_argument("--grad-ckpt", action="store_true", help="gradient checkpointing (slower, less mem)")
+    ap.add_argument("--bench-steps", type=int, default=0,
+                    help="time N real steps at the given settings, print ms/step + peak GiB, exit")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--margin-weight", type=float, default=0.0,
                     help="weight of the value-margin term on records carrying `qvals` "
@@ -351,6 +353,34 @@ def main():
     random.Random(0).shuffle(batches)
     log(f"length-bucketed into {len(batches)} batches "
         f"(~{sum(len(b) for b in batches)/max(1,len(batches)):.1f} records each)")
+
+    if args.bench_steps:
+        # Time the REAL step, not a replica. The loop is time-boxed (--deadline-h), so throughput
+        # buys either more data per round or -- with the deadline cut to match -- more rounds in
+        # the same calendar; either way the number that decides it is ms per step under the exact
+        # tokenise -> forward -> backward this trainer runs.
+        import torch as _t
+        _t.cuda.reset_peak_memory_stats()
+        warm = min(10, args.bench_steps)
+        for k in range(args.bench_steps + warm):
+            if k == warm:
+                _t.cuda.synchronize(); tb = time.time(); rec = 0
+            g = batches[k % len(batches)]
+            (listwise_loss(g) / args.accum).backward()
+            if (k + 1) % args.accum == 0:
+                _t.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                opt.step(); opt.zero_grad()
+            if k >= warm:
+                rec += len(g)
+        _t.cuda.synchronize()
+        el = time.time() - tb
+        log("BENCH pair_batch %d accum %d grad_ckpt %d max_len %d -> %.0f ms/step  %.1f rec/s  "
+            "peak %.2f GiB"
+            % (args.pair_batch, args.accum, int(args.grad_ckpt), args.max_len,
+               1000 * el / args.bench_steps, rec / el,
+               _t.cuda.max_memory_allocated() / 2**30))
+        return
+
     while True:
         grp = batches[i]; i += 1
         if i >= len(batches):

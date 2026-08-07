@@ -20,14 +20,23 @@
 # exists), so the ~2 hours already spent screening d41_r3 are not thrown away, and PREV re-seeds
 # from mirror_r3.json so the paired line survives the restart.
 #
-#   nohup setsid bash tools/d41_restart_r4.sh > /root/d41_restart.log 2>&1 < /dev/null &
+# WAIT=screen  wait for round $ROUND's merged screen, then restart at $ROUND re-using it. Use
+#              when the change affects what happens AFTER the screen (targets, collect, train).
+# WAIT=trained wait for round $((ROUND-1))'s checkpoint, then restart at $ROUND before its screen
+#              starts. Use when the change affects the SCREEN itself -- otherwise the round-5
+#              screen would run under the old sharding and the fix would slip another round.
+#
+#   WAIT=trained ROUND=5 nohup setsid bash tools/d41_restart.sh > /root/d41_restart5.log 2>&1 &
 set -u
 STATE=${STATE:-/root/loop_deberta41}
 ROUND=${ROUND:-4}
 MERGED=$STATE/mirror_r$ROUND.json
 SCRIPT=${SCRIPT:-/root/d41_run.sh}
 SRC=${SRC:-/root/ptcg/repo/tools/dagger_loop8.sh}
-TIMEOUT_MIN=${TIMEOUT_MIN:-240}
+TIMEOUT_MIN=${TIMEOUT_MIN:-480}
+WAIT=${WAIT:-screen}
+OUTSTEM=${OUTSTEM:-/root/out/d41_r}
+FROM=${FROM:-$OUTSTEM$((ROUND-1))}
 
 say() { echo "[d41restart $(date -u +%m-%d_%H:%M:%S)] $*"; }
 
@@ -37,23 +46,41 @@ cp "$SRC" "$SCRIPT.new" || { say "cannot stage $SRC"; exit 1; }
 bash -n "$SCRIPT.new" || { say "staged script does not parse -- refusing"; exit 1; }
 grep -q "from mirror_match import sprt" "$SCRIPT.new" \
   || { say "staged script does NOT contain the ladder fix -- refusing"; exit 1; }
+if [ "$WAIT" = trained ]; then
+  grep -q "LPT\|least work so far" "$SCRIPT.new" \
+    || { say "staged script has no cost-balanced sharding -- refusing"; exit 1; }
+fi
 say "staged the fixed loop at $SCRIPT.new"
 
-say "waiting for $MERGED (round-$ROUND screen)"
+# NOT a test on $FROM/model.safetensors: the loop copies the previous checkpoint into $OUT at the
+# START of the round, so that file exists from minute one and the wait would fire instantly. The
+# log line is written only after training returns AND the RESUME check has passed.
+ready() {
+  if [ "$WAIT" = trained ]; then
+    grep -aq "round $((ROUND - 1)) done -> $FROM" "$STATE/loop.log"
+  else
+    [ -s "$MERGED" ]
+  fi
+}
+if [ "$WAIT" = trained ]; then
+  say "waiting for round $((ROUND - 1)) to finish training into $FROM"
+else
+  say "waiting for $MERGED (round-$ROUND screen)"
+fi
 waited=0
-while [ ! -s "$MERGED" ]; do
+while ! ready; do
   if ! pgrep -f "$(basename "$SCRIPT")" > /dev/null 2>&1; then
-    say "the loop is already gone; applying the swap and starting round $ROUND from scratch"
+    say "the loop is already gone; applying the swap and starting round $ROUND"
     break
   fi
   if [ "$waited" -ge "$TIMEOUT_MIN" ]; then
-    say "TIMEOUT after ${waited} min -- NOT killing a screen that is merely slow. See $STATE/loop.log"
+    say "TIMEOUT after ${waited} min -- NOT killing a phase that is merely slow. See $STATE/loop.log"
     exit 1
   fi
   sleep 60
   waited=$((waited + 1))
 done
-say "screen ready after ${waited} min"
+say "ready after ${waited} min"
 
 pkill -f "$(basename "$SCRIPT")" 2>/dev/null || true
 sleep 3
@@ -74,8 +101,8 @@ LEFT=$(python3 -c "
 import datetime as dt
 end = dt.datetime(2026, 8, 9, 3, 53, tzinfo=dt.timezone.utc)
 print(max(1, int((end - dt.datetime.now(dt.timezone.utc)).total_seconds() // 3600)))")
-say "relaunching at round $ROUND from /root/out/d41_r3 with DEADLINE_H=$LEFT"
-KIND=deberta41 OUTSTEM=/root/out/d41_r START_ROUND=$ROUND MODEL=/root/out/d41_r3 \
+say "relaunching at round $ROUND from $FROM with DEADLINE_H=$LEFT"
+KIND=deberta41 OUTSTEM=/root/out/d41_r START_ROUND=$ROUND MODEL=$FROM \
   DEADLINE_H=$LEFT VALUED=/root/ptcg/repo/data/rerank/v41_attach.jsonl.gz VALUED_FRAC=0.05 \
   setsid nohup bash "$SCRIPT" >> /root/d41_start.log 2>&1 < /dev/null &
 sleep 20

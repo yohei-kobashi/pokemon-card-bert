@@ -131,13 +131,20 @@ RATIO=${RATIO:-0.05}
 VALUED_FRAC=${VALUED_FRAC:-0}
 MAXLEN=${MAXLEN:-512}
 SCREEN_GAMES=${SCREEN_GAMES:-40}
-SHARDS=${SHARDS:-4}
+# 8, not 4. The screen is bound by its slowest shard and the shards were dealt alphabetically:
+# round 4 came in at 4478 / 2225 / 2454 / 2381 s. With cost-balanced dealing (below) 8 shards
+# put the predicted wall at ~1279 s against 4478 today. Past ~8 the single longest deck is the
+# floor, so more shards buy nothing -- that is what --deck-seconds is for.
+SHARDS=${SHARDS:-8}
 # --- seeded round (loop7) -----------------------------------------------------------------
 # Screen with the same shuffle for both seats and the SAME seeds every round, so a
 # round-over-round difference is a policy difference. 63 decks: paired SE 1.58x tighter, and
 # re-scoring one checkpoint moves 0.00pt instead of 2.6pt. mirror `p` != stock `p`, so the first
 # seeded round re-screens the PREVIOUS checkpoint in mirror mode to keep the paired line valid.
 MIRROR_SCREEN=${MIRROR_SCREEN:-1}
+# Bound the per-deck tail. mega_venusaur spent 2071 s (18% of the whole screen) to return 2-7
+# with 31 draws in 40 games; draws carry no information for the SPRT. 600 s is ~4x the median.
+DECK_SECONDS=${DECK_SECONDS:-600}
 SCREEN_SEED=${SCREEN_SEED:-1}
 # 0, not 1: this loop's round-1 screen is already a mirror screen (see the header).
 DUAL_FIRST=${DUAL_FIRST:-0}
@@ -174,21 +181,52 @@ ROUND=${START_ROUND:-1}
 # Screen one checkpoint on every deck: screen_model <checkpoint> <merged-out> <tag>
 screen_model() {
   local SMODEL="$1" SOUT="$2" STAG="$3" j=0
-  python3 - "$SHARDS" > $STATE/shards.txt <<'PYX'
-import sys
+  # SHARD BY MEASURED COST, NOT ALPHABETICALLY. `d[i::n]` over a sorted deck list is blind to how
+  # long a deck takes, and the spread is not mild: in round 4 the four shards came in at 4478 /
+  # 2225 / 2454 / 2381 s. The wall clock is the slowest shard, so the screen cost 1.24 h to do
+  # 3.2 h of work that would have fit in 0.80 h if balanced -- 26 minutes lost to the deal.
+  #
+  # One deck causes most of it. mega_venusaur took 2071 s against a 153 s median, 7x the next
+  # slowest, and returned 2-7 with THIRTY-ONE DRAWS out of 40 games: it runs to the turn cap
+  # (retreat ping-pong, [[engine-retreat-pingpong]], which names venusaur) and draws carry no
+  # information for the SPRT. It is 18% of the screen's compute for 9 decisive games.
+  #
+  # Longest-processing-time first: sort by last round's seconds, hand each deck to the shard with
+  # the least work so far. LPT is within 4/3 of optimal, and the floor here is the single longest
+  # deck -- so raising SHARDS past that point buys nothing, which is why the cap below exists.
+  # No history (round 1, or the logs were cleaned) falls back to the old round-robin.
+  python3 - "$SHARDS" "$STATE" > $STATE/shards.txt <<'PYX'
+import glob, re, sys
 sys.path.insert(0, "."); sys.path.insert(0, "cg-lib")
 import library
 d = sorted(library.list_decks())
-n = int(sys.argv[1])
-for i in range(n):
-    print(" ".join("--deck " + x for x in d[i::n]))
+n, state = int(sys.argv[1]), sys.argv[2]
+cost = {}
+for f in glob.glob(state + "/screen_mirror_r*.log"):
+    for line in open(f, errors="ignore"):
+        m = re.match(r"(\S+)\s+B \d+-\d+ = .*?(\d+)s$", line.strip())
+        if m:                      # later rounds overwrite earlier ones: freshest wins
+            cost[m.group(1)] = int(m.group(2))
+if not cost:
+    for i in range(n):
+        print(" ".join("--deck " + x for x in d[i::n]))
+    raise SystemExit
+med = sorted(cost.values())[len(cost) // 2]
+load, bins = [0.0] * n, [[] for _ in range(n)]
+for deck in sorted(d, key=lambda k: -cost.get(k, med)):
+    i = min(range(n), key=lambda k: load[k])
+    bins[i].append(deck); load[i] += cost.get(deck, med)
+print("[shard] predicted %.0f-%.0f s across %d shards (was one bin of %.0f)"
+      % (min(load), max(load), n, sum(load) / n), file=sys.stderr)
+for b in bins:
+    print(" ".join("--deck " + x for x in b))
 PYX
   local MFLAG=""
   [ "$MIRROR_SCREEN" = 1 ] && MFLAG="--mirror --seed $SCREEN_SEED --mirror-so $MIRROR_SO"
   while read -r DECKS; do
     [ -n "$DECKS" ] || continue
     PYTHONPATH=cg-lib nohup python3 tools/mirror_match.py $DECKS --a engine --b "hf:$SMODEL" \
-        --max-games "$SCREEN_GAMES" $MFLAG --out "$STATE/${STAG}.$j.json" \
+        --max-games "$SCREEN_GAMES" --deck-seconds "$DECK_SECONDS" $MFLAG --out "$STATE/${STAG}.$j.json" \
         > "$STATE/screen_${STAG}.$j.log" 2>&1 &
     j=$((j+1))
   done < $STATE/shards.txt

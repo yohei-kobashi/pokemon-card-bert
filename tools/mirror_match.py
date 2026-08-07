@@ -582,6 +582,10 @@ def main():
                     help="equivalence margin: B counts as WORSE only below p0-margin")
     ap.add_argument("--alpha", type=float, default=0.05)
     ap.add_argument("--beta", type=float, default=0.05)
+    ap.add_argument("--deck-seconds", type=float, default=0,
+                    help="stop a deck after this many seconds, keeping the games it got. "
+                         "0 = no cap. Bounds the tail: one turn-cap-bound deck can be 18%% "
+                         "of a screen and set the wall clock for all of them.")
     ap.add_argument("--out", default="")
     ap.add_argument("--mirror", action="store_true",
                     help="same decklist AND the same shuffle order for both seats, and replay "
@@ -688,6 +692,18 @@ def main():
                                         args.margin)
                 if verdict != "undecided":
                     break
+            # A WALL-CLOCK CAP PER DECK. One deck can cost more than the other 64 put together:
+            # in a round-4 screen mega_venusaur took 2071 s against a 153 s median -- 18% of the
+            # whole screen -- and returned 2-7 with 31 DRAWS out of 40 games. Its games run to
+            # the turn cap ([[engine-retreat-pingpong]] names venusaur), and a draw carries no
+            # information for the SPRT and 0.5 for p, so that time bought almost nothing.
+            # Stopping early truncates the game COUNT without touching the distribution, so the
+            # deck's estimate gets noisier and stays unbiased -- the right trade when the
+            # alternative is one deck setting the wall clock for all 65.
+            if args.deck_seconds and time.time() - t0 > args.deck_seconds:
+                print("  %-22s STOPPED at %d games (%.0fs > --deck-seconds %g); %d draws"
+                      % (deck, ngames, time.time() - t0, args.deck_seconds, d), flush=True)
+                break
             if ngames % 20 == 0:
                 sup, ni, _v = sprt(sw, sl, args.p0, args.p1, args.alpha, args.beta, args.margin)
                 extra = ("  pairs %d-%d split %.0f%%"
