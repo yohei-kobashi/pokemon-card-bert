@@ -126,7 +126,12 @@ KIND=${KIND:-deberta41}
 MODEL=${MODEL:?set MODEL to the checkpoint this loop starts from}
 # Where each round's checkpoint is written. MUST NOT be /root/out/l6_r* -- see change 3.
 OUTSTEM=${OUTSTEM:-/root/out/d41_r}
-BASE=${BASE:-$REPO/data/rerank/v41_base.jsonl.gz}
+# Prefer the pilot-11 pool: same rows the mix filter would keep, minus scanning 42.5M rows to
+# find them (the reservoir reads the WHOLE base file every round). Falls back to the full pool
+# + filter when the 11-file does not exist yet.
+BASE=${BASE:-$([ -s /root/ptcg/repo/data/rerank/v41_base11.jsonl.gz ] \
+  && echo /root/ptcg/repo/data/rerank/v41_base11.jsonl.gz \
+  || echo /root/ptcg/repo/data/rerank/v41_base.jsonl.gz)}
 VALUED=${VALUED:-$REPO/data/rerank/v40_attach_q1.jsonl.gz,$REPO/data/rerank/v40_attach_q2.jsonl.gz}
 RATIO=${RATIO:-0.05}
 # 0 until the attach files are re-rendered in v41; mix_v40.py still needs --valued to point at

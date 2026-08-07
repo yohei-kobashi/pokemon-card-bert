@@ -23,6 +23,11 @@ TARGET_ROWS=${TARGET_ROWS:-10000000}
 GAMES=${GAMES:-12}
 WORKERS=${WORKERS:-28}
 MIN_FREE_GIB=${MIN_FREE_GIB:-12}
+# Only generate matchups INVOLVING these decks (gen_selfplay --pair-with). Empty = all 2,080
+# pairs. The pool logs BOTH sides, so a game of an 11-deck vs anything contributes pilot-11
+# rows regardless of who wins -- restricting the pairing (not the deck list) triples the
+# pilot-11 share of new rows while keeping full opponent variety.
+PAIR_WITH=${PAIR_WITH:-}
 
 cd "$REPO"
 mkdir -p "$PENDING" "$(dirname "$BASE")"
@@ -49,8 +54,10 @@ while true; do
   # --keep-blob is REQUIRED: v41 decodes the engine's hidden state out of
   # obs["search_begin_input"], and without it every hidden fact renders as absent -- silently,
   # because they are all optional.
+  PW=""
+  [ -n "$PAIR_WITH" ] && PW="--pair-with $PAIR_WITH"
   CUDA_VISIBLE_DEVICES= nice -n 5 python3 tools/gen_selfplay.py --games "$GAMES" \
-      --workers "$WORKERS" --keep-blob --tag "$TAG" 2>&1 | tail -2 \
+      --workers "$WORKERS" --keep-blob --tag "$TAG" $PW 2>&1 | tail -2 \
       || { say "generation failed"; sleep 60; continue; }
   CUDA_VISIBLE_DEVICES= nice -n 5 python3 tools/build_rerank.py --tag "$TAG" --pfmt v41 \
       --label heuristic --sides both --workers "$WORKERS" 2>&1 | tail -2 \
@@ -76,6 +83,24 @@ if hits * 100 < n * 5:
 print("[check] %d rows, all pfmt=v41, %d (%.1f%%) carry a v41 fact" % (n, hits, 100.0*hits/n))
 PY
 
+  # With PAIR_WITH set, keep only the PILOT side that is in the set before appending. The
+  # batch logs BOTH sides, so ~45% of its rows are piloted by the opponent (outside the 11);
+  # appending them would dilute a file whose whole purpose is 11-deck density.
+  if [ -n "$PAIR_WITH" ]; then
+    python3 - "$NEW" "$PAIR_WITH" <<'PYF' || { say "pilot filter failed -- batch discarded"; rm -f "$NEW"; rm -rf "$REPO/data/selfplay/$TAG"; continue; }
+import gzip, json, sys
+src, keep = sys.argv[1], set(sys.argv[2].split(","))
+n = k = 0
+with gzip.open(src, "rt") as f, gzip.open(src + ".f", "wt") as g:
+    for line in f:
+        n += 1
+        if json.loads(line).get("deck") in keep:
+            g.write(line); k += 1
+print("[genv41] pilot filter kept %d of %d rows (%.0f%%)" % (k, n, 100.0*k/max(1,n)))
+if not k: raise SystemExit("no rows survived the pilot filter")
+PYF
+    mv "$NEW.f" "$NEW"
+  fi
   if [ -s "$BASE" ]; then cat "$BASE" "$NEW" > "$BASE.part"; else cp "$NEW" "$BASE.part"; fi
   python3 - "$BASE.part" <<'PY' || { say "append failed -- pool untouched"; rm -f "$BASE.part"; continue; }
 import gzip, json, sys
