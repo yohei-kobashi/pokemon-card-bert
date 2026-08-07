@@ -27,8 +27,11 @@
 #
 #   1. BASE is v41_base.jsonl.gz. Pointing at v40_base trains a v41 model on v40 prompts; the
 #      renderer would not complain, and the screen -- which renders v41 -- would just score low.
-#   2. MAXLEN 512. DeBERTa-v2's max_position_embeddings IS 512; 768 is not a slow path, it is an
-#      index error at the first long row.
+#   2. MAXLEN 512. NOT because longer errors -- that was measured wrong. deberta-v3 has
+#      position_biased_input=False (no absolute position table at all) and log-bucketed relative
+#      attention; a 1024-token forward runs fine. 512 stays because the v41 prompt FITS it:
+#      measured over 700 rows across all 63 decks, pair tokens p50 352 / p99 492, over-512 rate
+#      0.14% (max overshoot 4 tokens). A larger window would buy nothing and cost O(L^2).
 #   3. OUTSTEM. loop7 wrote /root/out/l6_r$ROUND. l6_r8 is the REFERENCE checkpoint this whole
 #      comparison is measured against, and round 8 here would have overwritten it.
 #   4. VALUED_FRAC defaults to 0. The playout-valued attach files are v40-rendered
@@ -194,6 +197,16 @@ BASE_MIN=${BASE_MIN:-170000}     # 170k/(170k+30k) = 85.0%, the documented floor
 BASE_FROM=${BASE_FROM:-5}        # first round that tapers
 DEADLINE_H=${DEADLINE_H:-24}
 MARGIN=${MARGIN:-0.5}
+# 2, not 12, from round 6. The flat rounds delivered ~4,200 optimizer updates each (50k
+# backwards / accum 12) at lr 1e-5 on a warm-started checkpoint, and the update-starvation
+# probe showed the same trainer MOVING (-0.20 train loss over 857 updates, train dipping below
+# eval for the first time) once given updates. accum 12->2 is 6x the updates at ~unchanged wall
+# clock -- opt.step is cheap next to forward+backward at this size.
+ACCUM=${ACCUM:-2}
+# The submission is drawn from STAGE_C_TARGETS; training the pilot side 63-wide spends 83% of
+# every round on decks that cannot ship. Opponent side stays unrestricted inside the rows.
+# Empty = old behaviour.
+PILOT_DECKS=${PILOT_DECKS:-$(PYTHONPATH=$REPO/tools python3 -c "import rl_config; print(','.join(rl_config.STAGE_C_TARGETS))" 2>/dev/null || true)}
 LR=${LR:-1e-5}
 STATE=/root/loop_$KIND
 LOG=$STATE/loop.log
@@ -385,6 +398,9 @@ import json, sys
 sys.path.insert(0, '$REPO/tools')
 from mirror_match import sprt          # stdlib-only at module level; no PYTHONPATH needed
 d = json.load(open('$MIR'))['decks']
+pilot = set('$PILOT_DECKS'.split(',')) - {''}
+if pilot:
+    d = {k: v for k, v in d.items() if k in pilot}   # only shippable decks are DAgger targets
 by_p = sorted(d, key=lambda k: d[k]['p'])
 def _worse(v):
     return sprt(v['w'], v['l'], 0.50, 0.55, 0.05, 0.05, 0.05)[2] == 'WORSE'
@@ -453,6 +469,7 @@ print(','.join(pick))
   # the base contribution would be a constant, not a sample.
   python3 tools/mix_v40.py --base "$BASE" --dagger "$DAG" --valued "$VALUED" \
       --dagger-frac "$RRATIO" --valued-frac "$RVFRAC" --total "$RTOTAL" \
+      --pilot-decks "$PILOT_DECKS" \
       --seed "$ROUND" --out "$MIX" \
       || { say "mix FAILED -- stopping"; break; }
 
@@ -474,7 +491,7 @@ print(','.join(pick))
       || { say "STOP: $OUT is not a usable checkpoint to continue from"; break; }
   export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
   python3 tools/train_rerank.py --data "$MIX" --out "$OUT" --resume \
-      --deadline-h 5 --max-samples "$RTOTAL" --lr "$LR" --pair-batch 32 --accum 12 --max-len "$MAXLEN" \
+      --deadline-h 5 --max-samples "$RTOTAL" --lr "$LR" --pair-batch 32 --accum "$ACCUM" --max-len "$MAXLEN" \
       --eval-n 2000 --grad-ckpt --margin-weight "$MARGIN" \
       || { say "train FAILED -- stopping"; break; }
   [ -f "$OUT/model.safetensors" ] || { say "no model saved -- stopping"; break; }

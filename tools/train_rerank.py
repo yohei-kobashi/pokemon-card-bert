@@ -128,6 +128,19 @@ def main():
     ap.add_argument("--max-samples", type=int, default=800000)
     ap.add_argument("--eval-n", type=int, default=2000)
     ap.add_argument("--grad-ckpt", action="store_true", help="gradient checkpointing (slower, less mem)")
+    ap.add_argument("--fp32", action="store_true",
+                    help="keep the WEIGHTS in fp32 and run the forward under autocast(bf16), "
+                         "i.e. real mixed precision. Without it the parameters themselves are "
+                         "bf16: 8 mantissa bits = 0.39%% relative resolution, while an AdamW "
+                         "update is ~lr in absolute size, so every weight with |w| > lr*256 "
+                         "moves by less than one ulp and the addition rounds away to nothing. "
+                         "At lr 1e-5 that threshold is 2.6e-3, and DeBERTa initialises at 0.02.")
+    ap.add_argument("--rows", type=int, default=0,
+                    help="cap the rows READ (0 = --max-samples). Separating this from the "
+                         "training length is what makes an overfit probe possible: --rows 2000 "
+                         "--max-samples 60000 is 30 epochs over the same 1800 rows, and a run "
+                         "that cannot drive THAT to zero has an optimisation problem, not a "
+                         "data problem.")
     ap.add_argument("--bench-steps", type=int, default=0,
                     help="time N real steps at the given settings, print ms/step + peak GiB, exit")
     ap.add_argument("--resume", action="store_true")
@@ -173,7 +186,8 @@ def main():
         tok = AutoTokenizer.from_pretrained(args.out)
         tok.truncation_side = "left"
         model = AutoModelForSequenceClassification.from_pretrained(
-            args.out, trust_remote_code=True, dtype=torch.bfloat16).to(dev)
+            args.out, trust_remote_code=True,
+            dtype=torch.float32 if args.fp32 else torch.bfloat16).to(dev)
         if os.path.exists(os.path.join(args.out, "rr_progress.json")):
             resume_seen = json.load(open(os.path.join(args.out, "rr_progress.json")))["seen"]
         log(f"RESUME from {args.out}, seen {resume_seen}, vocab {len(tok)}")
@@ -181,7 +195,8 @@ def main():
         tok = AutoTokenizer.from_pretrained(args.model)
         tok.truncation_side = "left"
         model = AutoModelForSequenceClassification.from_pretrained(
-            args.model, trust_remote_code=True, dtype=torch.bfloat16).to(dev)
+            args.model, trust_remote_code=True,
+            dtype=torch.float32 if args.fp32 else torch.bfloat16).to(dev)
         # DOMAIN TOKENS: c<cardId>/a<attackId>/enums -> ONE token each. Cuts state+candidate
         # length several-fold -> fewer tokens per forward -> faster CPU inference (the reranker
         # re-encodes the state per candidate) + less truncation. No output-vocab bloat (cands
@@ -206,7 +221,7 @@ def main():
     else:
         opt = AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
 
-    rows = read_rows(args.data, args.max_samples, seed=args.sample_seed,
+    rows = read_rows(args.data, args.rows or args.max_samples, seed=args.sample_seed,
                      cap_matchup=args.cap_matchup, cap_deck=args.cap_deck)
     random.Random(0).shuffle(rows)
     if args.eval_file:
@@ -249,7 +264,14 @@ def main():
         # (max pair 584 vs --max-len 640) but train and deploy must not disagree on the rule.
         enc = tok(pairs, padding=True, truncation="only_first", max_length=args.max_len,
                   return_tensors="pt").to(dev)
-        logits = model(**enc).logits.squeeze(-1)          # [n_pairs]
+        if args.fp32:
+            # fp32 master weights, bf16 math: the matmuls stay as fast as pure bf16 while the
+            # weight + update addition happens in fp32, where the update is representable.
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                logits = model(**enc).logits.squeeze(-1)
+            logits = logits.float()
+        else:
+            logits = model(**enc).logits.squeeze(-1)      # [n_pairs]
         out = [[] for _ in records]
         for k, ri in enumerate(owner):
             out[ri].append(logits[k])

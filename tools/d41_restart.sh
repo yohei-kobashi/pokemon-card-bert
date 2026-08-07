@@ -56,6 +56,10 @@ grep -q "base taper step" "$SCRIPT.new" \
   || { say "staged script has no base taper -- refusing"; exit 1; }
 grep -q 'max-samples "\$RTOTAL"' "$SCRIPT.new" \
   || { say "staged script still runs to the deadline, so the taper would only add epochs"; exit 1; }
+grep -q -- '--accum "\$ACCUM"' "$SCRIPT.new" \
+  || { say "staged script lacks the ACCUM param (update starvation stays) -- refusing"; exit 1; }
+grep -q -- '--pilot-decks "\$PILOT_DECKS"' "$SCRIPT.new" \
+  || { say "staged script lacks the pilot-11 filter -- refusing"; exit 1; }
 say "staged the fixed loop at $SCRIPT.new"
 
 # NOT a test on $FROM/model.safetensors: the loop copies the previous checkpoint into $OUT at the

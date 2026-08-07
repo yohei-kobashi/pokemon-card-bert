@@ -33,15 +33,28 @@ def count(path):
     return n
 
 
-def reservoir(path, want, rng):
+def reservoir(path, want, rng, pilot_decks=None):
     """A UNIFORM sample without holding the file in memory.
 
     Reading the head instead would read whatever the file happens to be sorted by -- for the
     base pool that is matchup order, which once silently reduced 62 decks to 19.
+
+    ``pilot_decks`` keeps only rows whose PILOT deck is in the set; the opponent side stays
+    unrestricted, so the ladder's opponent variety survives. Restricting the pilot to the 11
+    submission candidates raises per-deck density ~6x at the same row budget -- the training
+    breadth was 63 decks wide while the submission is drawn from 11 ([[stage-c-eleven-decks]]),
+    and [[narrow-dagger-overfits]] measured concentration moving the TARGET +11.9pt (its fleet
+    penalty is a cost the fleet no longer collects on).
     """
+    want_set = set(pilot_decks) if pilot_decks else None
     res, n = [], 0
     with gzip.open(path, "rt") as f:
         for line in f:
+            if want_set is not None:
+                # cheap prefilter before json: every row carries "deck": "<name>"
+                d = json.loads(line).get("deck")
+                if d not in want_set:
+                    continue
             n += 1
             if len(res) < want:
                 res.append(line)
@@ -71,6 +84,9 @@ def main():
                          "whole and its share simply falls where it falls.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--pilot-decks", default="",
+                    help="comma list; keep only BASE rows piloted by these decks (opponent "
+                         "unrestricted). Empty = all decks.")
     a = ap.parse_args()
 
     rng = random.Random(a.seed)
@@ -115,7 +131,10 @@ def main():
     if rest > 0:
         rows += rng.sample(valued, min(rest, len(valued)))
     print("  valued repeated x%.2f -> %d rows" % (reps, want_v), flush=True)
-    rows += reservoir(a.base, want_b, rng)
+    pilots = [d for d in a.pilot_decks.split(",") if d] or None
+    rows += reservoir(a.base, want_b, rng, pilot_decks=pilots)
+    if pilots:
+        print("  base filtered to %d pilot decks" % len(pilots), flush=True)
     print("  base   %-42s %d sampled" % (os.path.basename(a.base), want_b), flush=True)
 
     rng.shuffle(rows)
