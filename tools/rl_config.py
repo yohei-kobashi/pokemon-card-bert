@@ -265,6 +265,10 @@ def _stageA_pilot_weights(decks):
 # screen (`mirror_match --a engine --b hf:<ckpt> --mirror`, merged), i.e. how well the
 # POLICY pilots each deck. Written by the loop after every gate.
 LM_SCREEN = os.path.join(ROOT, "evaluations", "lm_mirror_screen.json")
+# Below this many games per deck the file is a screen, not a gate, and must not drive weights.
+# 150 is the established per-matchup floor ([[deck-status-and-live-scores]]); the Stage-1 gate
+# runs 229 ([[rl-curriculum-two-stage]]) and tools/stage1_loop.sh copies each round's gate here.
+MIN_SCREEN_GAMES = 150
 
 # Which (deck, kind) DECISIONS the Q-label budget buys, as opposed to which decks the games are
 # played with. Produced by tools/retarget_cells.py from the observed gaps
@@ -316,14 +320,28 @@ def _stage12_pilot_weights(decks, screen_path=None):
     exactly like a working run.
     """
     p = screen_path or LM_SCREEN
-    wr = {}
+    wr, games = {}, []
     try:
         with open(p) as f:
             for d, v in (json.load(f).get("decks") or {}).items():
                 if isinstance(v, dict) and v.get("p") is not None:
                     wr[d] = 100.0 * float(v["p"])
+                    games.append(int(v.get("w", 0)) + int(v.get("l", 0)) + int(v.get("d", 0)))
     except Exception:
         pass
+    # A THIN SCREEN CANNOT CARRY THIS ALLOCATION. At 40 games/deck the per-deck SE is ~8pt, and
+    # the weights below are a linear function of the reading, so the noise IS the allocation.
+    # Measured on the same checkpoint: the 40-game screen put dudunsparce_box at 37.5% (2nd
+    # worst -> weight 0.200) and the 229-game gate put it at 55.3% (3rd best -> 0.043), while
+    # crustle at 43.4% sat on the 0.044 floor and should have had 0.141. Same failure mode as
+    # reading rl_ratings: an allocation driven by a measurement too coarse to support it.
+    if games:
+        med = sorted(games)[len(games) // 2]
+        if med < MIN_SCREEN_GAMES:
+            import sys
+            print("[rl_config] %s has only ~%d games/deck (floor %d). Per-deck SE is ~%.0fpt and "
+                  "these weights are linear in it -- point this at a gate, not a screen."
+                  % (p, med, MIN_SCREEN_GAMES, 50.0 / max(1.0, med ** 0.5)), file=sys.stderr)
     if not wr:
         import sys
         print("[rl_config] no LM screen at %s -- Stage-1 pilot weights fall back to UNIFORM. "
