@@ -57,6 +57,13 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="hf:<dir> | qwen:<dir>")
     ap.add_argument("--decks", required=True, help="comma list")
+    ap.add_argument("--protagonist", default="",
+                    help="cross-deck mode: this deck plays EVERY deck in --decks instead of "
+                         "itself. Seats alternate per game so the pair data is not a "
+                         "first-player sample. Same-deck self-play only ever produced mirror "
+                         "matchups, which do not occur on the ladder, and it left the prompt's "
+                         "opponent-ID segment carrying no information (the opponent was always "
+                         "our own list).")
     ap.add_argument("--games", type=int, default=40, help="per deck")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--mirror-so", default="")
@@ -121,6 +128,8 @@ def main():
 
     from lm.agent import _dedup
 
+    if a.protagonist and a.protagonist not in known:
+        sys.exit("unknown protagonist: %s" % a.protagonist)
     for deck in decks:
         ids = load_deck(deck)
         prof = tuning.get(deck, {})
@@ -130,6 +139,17 @@ def main():
         # to remove.
         agent, _scorer = make_agent(a.model, deck, ids, prof)
         _tap(_scorer)
+        # Cross-deck: the protagonist needs its OWN agent, because make_agent bakes the
+        # decklist and the tuning profile in. The SCORER is cached across decks inside
+        # make_agent, so both agents still share one policy object -- the property the
+        # same-object rule above is really protecting.
+        if a.protagonist:
+            pids = load_deck(a.protagonist)
+            pagent, _psc = make_agent(a.model, a.protagonist,
+                                      pids, tuning.get(a.protagonist, {}))
+            _tap(_psc)
+        else:
+            pids, pagent = ids, agent
 
         # Rows are buffered per game because `won` is only known at the end. A game is at most
         # a few hundred decisions, so this costs nothing and avoids a second pass over the file.
@@ -137,13 +157,21 @@ def main():
         tpicks, tmeta = [], []
         seat_wins = [0, 0]
 
-        def logging_agent(obs):
+        def _wrap(inner, dname=None):
+            """Logging wrapper around ONE agent. Cross-deck needs two of these (one per
+            decklist), so the closure that used to capture `agent` directly is now a factory."""
+
+            def logging_agent(obs):
+                return _log_step(inner, dname, obs)
+            return logging_agent
+
+        def _log_step(inner, dname, obs):
             cur = obs.get("current") or {}
             sel = obs.get("select") or {}
             raw = sel.get("option") or []
             opts = [encode_option(o, obs) for o in raw]
             del score_calls[:]
-            pick = agent(obs)
+            pick = inner(obs)
             idx = pick[0] if isinstance(pick, (list, tuple)) and pick else pick
             chosen = opts[idx] if isinstance(idx, int) and 0 <= idx < len(opts) else ""
             yi = cur.get("yourIndex", 0)
@@ -168,7 +196,7 @@ def main():
             pl = cur.get("players") or [{}, {}]
             pz = [len((pl[i].get("prize") or [])) for i in (0, 1)] if len(pl) > 1 else [0, 0]
             pending.append({
-                "deck": deck, "seed": cur.get("_seed"), "seat": yi,
+                "deck": dname or deck, "seed": cur.get("_seed"), "seat": yi,
                 "turn": cur.get("turn"),
                 # BOTH prize counts. The analyser matches on the pair, not on ours alone: at
                 # (2,5) we are winning and at (5,2) losing, and pooling those is how an
@@ -188,11 +216,20 @@ def main():
             del pending[:]
             del tpicks[:]
             del tmeta[:]
-            r = play(eng, logging_agent, logging_agent, ids, ids, s, mirror=1,
+            # Alternate which seat the protagonist takes. Without this every cross-deck game
+            # would put it first and the pairs would describe one seat's game only -- the
+            # failure the seat-fair budget was added to fix, reintroduced upstream of it.
+            if a.protagonist and g % 2:
+                d0, d1, ids0, ids1 = deck, a.protagonist, ids, pids
+                ag0, ag1 = agent, pagent
+            else:
+                d0, d1, ids0, ids1 = a.protagonist or deck, deck, pids, ids
+                ag0, ag1 = pagent, agent
+            r = play(eng, _wrap(ag0), _wrap(ag1), ids0, ids1, s, mirror=1,
                      max_steps=a.max_steps)
             n_games += 1
             if trace_f is not None and tpicks:
-                trace_f.write(json.dumps({"deck": deck, "seed": s, "result": r,
+                trace_f.write(json.dumps({"deck0": d0, "deck1": d1, "seed": s, "result": r,
                                           "picks": tpicks, "meta": tmeta}) + "\n")
             if r not in (0, 1):
                 continue                     # draw / timeout: no winner to split on

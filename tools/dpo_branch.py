@@ -75,19 +75,24 @@ def _one_game(job):
     eng = _ENG
     if "_ROLL" not in globals():
         _ROLL = {}
-    if deck not in _ROLL:
-        ids = [int(x) for x in open(library.deck_path(deck)) if x.strip()]
-        tuning = json.load(open(os.path.join(ROOT, "agents", "tuning.json")))
-        prof = tuning.get(deck, {})
-        # engine_v2 continuations for the playouts; the POLICY under test never runs here
-        _ROLL[deck] = (ids, make_lm_agent(ids, prof, model=None),
-                       make_lm_agent(ids, prof, model=None))
-    ids, me, opp = _ROLL[deck]
+    # A trace names one deck (same-deck self-play) or two (protagonist vs opponent). Seat 0
+    # holds d0, seat 1 holds d1; the engine has always taken the two decks separately and is
+    # deterministic either way (verified: with different decklists, same seed, each seat still
+    # gets a permutation of ITS OWN list and the order repeats across runs).
+    d0, d1 = (deck, deck) if isinstance(deck, str) else (deck[0], deck[1])
+    tuning = json.load(open(os.path.join(ROOT, "agents", "tuning.json")))
+    for d in (d0, d1):
+        if d not in _ROLL:
+            dids = [int(x) for x in open(library.deck_path(d)) if x.strip()]
+            # engine_v2 continuations for the playouts; the POLICY under test never runs here
+            _ROLL[d] = (dids, make_lm_agent(dids, tuning.get(d, {}), model=None))
+    IDS = (_ROLL[d0][0], _ROLL[d1][0])
+    AGENTS = (_ROLL[d0][1], _ROLL[d1][1])
 
     rng = random.Random(wseed)
     out, st = [], collections.Counter()
     want = {t: (margin, alt, nc) for t, margin, alt, nc in targets}
-    obs = eng.start(ids, ids, seed, mirror=1)
+    obs = eng.start(IDS[0], IDS[1], seed, mirror=1)
     if obs is None:
         st["start_failed"] += 1
         return out, dict(st)
@@ -122,9 +127,19 @@ def _one_game(job):
                     # t += 1), and every decision after it is replayed against a shifted state.
                     best = means = None
                     labelable = True
+                    # PERSPECTIVE. branch_values' `pilot_i` is the ABSOLUTE player index whose
+                    # win scores +1 (rl_branch._playout: `1 if r == pilot_i else -1`), and
+                    # `my_deck` is the ACTING player's list. This used to pass 0 and 0 always,
+                    # so every branch point where the 4B was moving as player 1 -- 48% of them
+                    # -- was labelled with the OPPONENT's preference: chosen and rejected
+                    # swapped. It matched the gate exactly (seat1 -0.53pt at 25% such pairs,
+                    # -6.10pt at 46%), i.e. "seat-fair selection made seat 1 worse" was this
+                    # bug being fed more of its own poison, not a data-quantity effect.
+                    yi = cur.get("yourIndex", 0)
                     try:
                         for _ in range(playouts):
-                            q = rl_branch.branch_values(obs, ids, ids, 0, sels, me, opp,
+                            q = rl_branch.branch_values(obs, IDS[yi], IDS[1 - yi], yi, sels,
+                                                        AGENTS[yi], AGENTS[1 - yi],
                                                         n_playouts=1, rng=rng)
                             for i, v in enumerate(q):
                                 if v is not None:
@@ -138,7 +153,11 @@ def _one_game(job):
                             st["drop_neutral"] += 1
                     else:
                         iw_raw, il_raw = sels[best][0], sels[1 - best][0]
-                        state = serialize_stateless(obs, deck_ids=ids, deck_name=deck, **fmt)
+                        # The prompt must describe the deck the ACTOR is holding. With two
+                        # different lists in play, rendering seat 1's board against seat 0's
+                        # DECK[...] would teach the model a list it is not piloting.
+                        state = serialize_stateless(obs, deck_ids=IDS[yi],
+                                                    deck_name=(d0, d1)[yi], **fmt)
                         # PROMPT_FMT renders the menu DEDUPED (menu_dedup=True), so a raw obs
                         # index is a coordinate in the wrong space -- 20% land past the end and
                         # are at least visibly dropped; the rest silently point at whatever
@@ -175,8 +194,15 @@ def _one_game(job):
                             "prompt": ACT + state, "tw": str(iw), "tl": str(il),
                             "qw": round(means[best], 4), "ql": round(means[1 - best], 4),
                             "margin": margin, "model_was": "w" if best == 0 else "l",
-                            "deck": deck, "seed": seed, "t": t,
-                            "seat": (cur.get("yourIndex", 0)),
+                            # `deck` is the deck the 4B is PILOTING at this decision, `opp`
+                            # what it faces -- not the matchup label, so a mix can be weighted
+                            # by either without re-deriving it from the seat.
+                            "deck": (d0, d1)[yi], "opp": (d0, d1)[1 - yi],
+                            "seed": seed, "t": t, "seat": yi,
+                            # How much evidence is behind qw/ql. The trainer converts
+                            # (qw - ql, pl) into a per-pair cDPO epsilon; without pl it would
+                            # have to assume a playout count and mis-weight every label.
+                            "pl": playouts,
                         })
                         st["pair"] += 1
                         st["model_" + ("right" if best == 0 else "wrong")] += 1
@@ -231,7 +257,11 @@ def main():
                 if d.get("header"):
                     fp_remote = d.get("fp")
                     continue
-                games[(d["deck"], d["seed"])] = d
+                # A cross-deck trace names deck0/deck1; a same-deck one names deck. The key
+                # keeps the pair so the replay can hand each seat its own list.
+                key = ((d["deck0"], d["deck1"]) if "deck0" in d
+                       else (d["deck"], d["deck"]))
+                games[(key, d["seed"])] = d
     if not fp_remote:
         sys.exit("traces carry no fingerprint header -- refusing to replay blind")
     print("%d games loaded | trace fingerprint %s (workers will verify)"
