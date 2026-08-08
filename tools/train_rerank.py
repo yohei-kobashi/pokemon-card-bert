@@ -144,6 +144,13 @@ def main():
     ap.add_argument("--bench-steps", type=int, default=0,
                     help="time N real steps at the given settings, print ms/step + peak GiB, exit")
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--l2sp", type=float, default=0.0,
+                    help="L2-SP: add lambda*||theta - theta_start||^2, anchoring the weights "
+                         "to the checkpoint being continued instead of to zero. This is the "
+                         "cheap half of EWC (no Fisher) and it is what --resume needs when the "
+                         "new round's data is NARROWER than the old: rehearsal mixes the old "
+                         "distribution back into the DATA, this constrains the WEIGHTS, and "
+                         "they fail differently. 0 disables. Try 1e-3 to 1e-2.")
     ap.add_argument("--margin-weight", type=float, default=0.0,
                     help="weight of the value-margin term on records carrying `qvals` "
                          "(tools/attach_label.py). 0 = off, i.e. byte-identical to the "
@@ -403,6 +410,13 @@ def main():
                _t.cuda.max_memory_allocated() / 2**30))
         return
 
+    _sp_ref = None
+    if args.l2sp > 0:
+        _sp_ref = {n: p.detach().clone().float() for n, p in model.named_parameters()
+                   if p.requires_grad}
+        print("[l2sp] anchored %d tensors at lambda %.2g" % (len(_sp_ref), args.l2sp),
+              flush=True)
+
     while True:
         grp = batches[i]; i += 1
         if i >= len(batches):
@@ -413,6 +427,15 @@ def main():
         if seen < resume_seen:                            # fast-forward on resume
             seen += len(grp); continue
         loss = listwise_loss(grp) / args.accum
+        if _sp_ref is not None:
+            # Anchor term. Computed against a frozen fp32 copy of the STARTING weights, so it
+            # measures drift from this round's init -- not from a random init, which is what
+            # ordinary weight decay does and why weight decay does not prevent forgetting.
+            pen = 0.0
+            for n_, p_ in model.named_parameters():
+                if p_.requires_grad and n_ in _sp_ref:
+                    pen = pen + ((p_ - _sp_ref[n_]) ** 2).sum()
+            loss = loss + (args.l2sp * pen) / args.accum
         loss.backward(); losses.append(float(loss) * args.accum)
         seen += len(grp); step += 1
         if step % args.accum == 0:

@@ -79,6 +79,7 @@ def load_dpo_pairs(path, limit=0, cf_set=None):
                 continue
             rows.append({"prompt": to_scheme_b(d["prompt"]), "cw": cw, "cl": cl,
                          "q_gap": float(d.get("qw", 0)) - float(d.get("ql", 0)),
+                         "pl": int(d.get("pl", 0) or 0),
                          "model_was": d.get("model_was", "?"), "deck": d.get("deck")})
             if limit and len(rows) >= limit:
                 break
@@ -120,17 +121,64 @@ def completion_logprobs(model, tok, torch, batch, maxlen, dev="cuda"):
     return torch.stack(out)                                          # [B]
 
 
+# Agreement between two INDEPENDENT playout measurements of the same branch point, measured
+# 2026-08-08 by re-running dpo_branch on round 2's exact 20,000 points with only --seed
+# changed. u is the gap in 16-playout units (1 unit = one playout flipping), and the u=2/u=3
+# cells are pooled because they violated monotonicity (PAVA on n=207/371).
+_AGREE = [(3, 0.704), (4, 0.796), (5, 0.843), (6, 0.904), (7, 0.934), (8, 0.993)]
+
+
+def eps_for_gap(q_gap, playouts):
+    """Per-pair cDPO epsilon = P(this label is the wrong way round).
+
+    Two steps, and the second is the one that is easy to get wrong. (1) Put the gap on a
+    common scale: the standard error of a playout mean goes as 1/sqrt(P), so a gap measured
+    with P playouts is worth sqrt(P/16) units on the 16-playout curve -- without this a
+    64-playout label would be charged the noise of a 16-playout one. (2) AGREEMENT IS NOT
+    ACCURACY. If each measurement is right with probability a, two of them agree with
+    probability a^2 + (1-a)^2, so 82.7% agreement means a = 90.4%, not 82.7%. Feeding raw
+    agreement in as epsilon would roughly double the smoothing and flatten real labels.
+    """
+    u = abs(q_gap) * 8.0 * ((max(1, playouts) / 16.0) ** 0.5)
+    if u <= _AGREE[0][0]:
+        agree = _AGREE[0][1]
+    elif u >= _AGREE[-1][0]:
+        agree = _AGREE[-1][1]
+    else:
+        for (u0, a0), (u1, a1) in zip(_AGREE, _AGREE[1:]):
+            if u0 <= u <= u1:
+                agree = a0 + (a1 - a0) * (u - u0) / (u1 - u0)
+                break
+    a = 0.5 * (1.0 + max(0.0, 2.0 * agree - 1.0) ** 0.5)
+    return min(0.45, max(0.005, 1.0 - a))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="unsloth/Qwen3-4B-Base")
     ap.add_argument("--data", required=True, help="dpo_branch.py output")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--init-from", required=True, help="the SFT checkpoint = policy init = ref")
+    ap.add_argument("--init-from", required=True, help="the checkpoint the POLICY starts from")
+    ap.add_argument("--ref-from", default="",
+                    help="checkpoint the REFERENCE policy comes from. Default: --init-from, "
+                         "which is the cheap case (policy == ref at step 0, so no second model "
+                         "is needed). Point it at the SFT checkpoint to keep beta's KL leash "
+                         "anchored THERE across rounds. This matters because SFT and DPO share "
+                         "one rank-16 adapter -- warm_start restores it and DPO trains the same "
+                         "tensors -- so LoRA bounds drift from the BASE model, NOT from the SFT "
+                         "result. Re-anchoring the reference each round removes the only thing "
+                         "that was holding the SFT in place.")
     ap.add_argument("--card-first", required=True)
     ap.add_argument("--domain-tokens", action="store_true", required=False, default=True)
     ap.add_argument("--beta", type=float, default=0.1)
     ap.add_argument("--cdpo-eps", type=float, default=0.0,
                     help="label-noise smoothing: eps fraction assumed mislabelled")
+    ap.add_argument("--cdpo-calibrated", action="store_true",
+                    help="per-pair epsilon from the pair's own playout gap (see eps_for_gap). "
+                         "Overrides --cdpo-eps. This is the answer to the measurement that "
+                         "only ~35%% of round 2's pairs reproduced with the same verdict.")
+    ap.add_argument("--label-playouts", type=int, default=16,
+                    help="playouts behind qw/ql when a row predates the 'pl' field")
     ap.add_argument("--lr", type=float, default=1e-5)
     ap.add_argument("--bsz", type=int, default=8, help="PAIRS per forward (2x sequences)")
     ap.add_argument("--accum", type=int, default=4)
@@ -179,6 +227,15 @@ def main():
     rows = load_dpo_pairs(a.data, a.limit, cf_set)
     if len(rows) < 50:
         raise SystemExit("too few pairs (%d) -- not spending a round on this" % len(rows))
+    if a.cdpo_calibrated:
+        import statistics as _st
+        for r in rows:
+            r["eps"] = eps_for_gap(r["q_gap"], r["pl"] or a.label_playouts)
+        e = sorted(r["eps"] for r in rows)
+        print("[cdpo] per-pair eps: mean %.3f p10 %.3f p50 %.3f p90 %.3f | pairs at the 0.45 "
+              "cap %d (their labels are coin flips and are held near-neutral)"
+              % (_st.mean(e), e[len(e) // 10], e[len(e) // 2], e[9 * len(e) // 10],
+                 sum(1 for x in e if x >= 0.4499)), flush=True)
     random.Random(a.seed).shuffle(rows)
     n_ev = max(20, int(len(rows) * a.eval_frac)) if not a.probe else 0
     ev, tr_rows = rows[:n_ev], rows[n_ev:]
@@ -188,7 +245,15 @@ def main():
     print("[data] train %d (model right %d / wrong %d) | held-out %d"
           % (len(tr_rows), was.get("w", 0), was.get("l", 0), n_ev), flush=True)
 
-    # ---- reference logprobs, BEFORE any update: policy == ref exactly -----------------------
+    # ---- reference logprobs -------------------------------------------------------------
+    # Default: the policy IS the reference at step 0, so one forward pass over the loaded
+    # weights is exactly log pi_ref and no second model is needed. With --ref-from, warm-start
+    # to the REFERENCE first, take the same pass, then warm-start back to the policy init --
+    # still one model in memory, at the cost of one extra adapter load.
+    if a.ref_from and a.ref_from != a.init_from:
+        print("[ref] anchoring beta at %s (policy starts from %s)"
+              % (a.ref_from, a.init_from), flush=True)
+        warm_start(model, getattr(tok, "tokenizer", tok), torch, a.ref_from, n_base_vocab or 0)
     model.eval()
     ref = {}
     with torch.no_grad():
@@ -201,6 +266,11 @@ def main():
             for j, r in enumerate(chunk):
                 ref[id(r)] = (float(lw[j]), float(ll[j]))
     print("[ref] cached %d pairs (+%.1fs)" % (len(ref), time.time() - t0), flush=True)
+    if a.ref_from and a.ref_from != a.init_from:
+        # Back to the policy's own starting weights. Without this the round would train the
+        # REFERENCE checkpoint and report it as a continuation of --init-from.
+        warm_start(model, getattr(tok, "tokenizer", tok), torch, a.init_from, n_base_vocab or 0)
+        print("[ref] policy restored to %s" % a.init_from, flush=True)
 
     def eval_pairs(rs):
         if not rs:
@@ -244,7 +314,11 @@ def main():
             rl = torch.tensor([ref[id(r)][1] for r in chunk], device=pw.device)
             z = a.beta * ((pw - rw) - (pl - rl))
             loss_pos = -torch.nn.functional.logsigmoid(z)
-            if a.cdpo_eps > 0:
+            if a.cdpo_calibrated:
+                eps = torch.tensor([r["eps"] for r in chunk], device=z.device, dtype=z.dtype)
+                loss = ((1 - eps) * loss_pos
+                        - eps * torch.nn.functional.logsigmoid(-z)).mean()
+            elif a.cdpo_eps > 0:
                 loss = ((1 - a.cdpo_eps) * loss_pos
                         - a.cdpo_eps * torch.nn.functional.logsigmoid(-z)).mean()
             else:
