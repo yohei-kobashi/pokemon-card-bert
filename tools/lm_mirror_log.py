@@ -57,6 +57,11 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", required=True, help="hf:<dir> | qwen:<dir>")
     ap.add_argument("--decks", required=True, help="comma list")
+    ap.add_argument("--deck-model", default="",
+                    help="pilot for the --decks side when it differs from --model, which is "
+                         "then the PROTAGONIST's pilot only. 'reg' gives each deck its own "
+                         "adapter -- the shape that trains an opponent LoRA: the deck plays "
+                         "itself, dusknoir plays its champion.")
     ap.add_argument("--protagonist", default="",
                     help="cross-deck mode: this deck plays EVERY deck in --decks instead of "
                          "itself. Seats alternate per game so the pair data is not a "
@@ -65,7 +70,13 @@ def main():
                          "opponent-ID segment carrying no information (the opponent was always "
                          "our own list).")
     ap.add_argument("--games", type=int, default=40, help="per deck")
+    ap.add_argument("--games-per-deck", default="",
+                    help="'deck=N,deck=N' -- overrides --games for those decks. The RL loop "
+                         "uses it to spend a fixed game budget UNEVENLY, giving the matchups "
+                         "the champion loses more of the training data (tools/field_alloc.py).")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--fmt", default="prompt", choices=("prompt", "dusk"),
+                    help="prompt format for the model agent; 'dusk' = single-deck no-DECK[]")
     ap.add_argument("--mirror-so", default="")
     ap.add_argument("--out", required=True)
     ap.add_argument("--trace-out", default="",
@@ -84,7 +95,9 @@ def main():
     # buckets as "?", which is exactly what the first run of this tool did.
     from lm.actions import encode_option
     from mirror_env import DEFAULT_SO, MirrorEngine, engine_fingerprint, play
+    import mirror_match
     from mirror_match import load_deck, make_agent
+    mirror_match._FMT = a.fmt          # module global: make_agent recurses (defer:/planrule:)
 
     so = a.mirror_so or DEFAULT_SO
     eng = MirrorEngine(so)
@@ -94,6 +107,22 @@ def main():
     missing = [d for d in decks if d not in known]
     if missing:
         sys.exit("unknown deck(s): %s" % ", ".join(missing))
+
+    # Per-deck game counts. Unnamed decks keep --games, so this is additive; an entry naming a
+    # deck that is not being played is an ERROR rather than a no-op, because the RL loop builds
+    # this string from a gate result and a silently ignored name would move the whole allocation
+    # without changing a single line of output.
+    NGAMES = {d: a.games for d in decks}
+    for part in [x for x in a.games_per_deck.split(",") if x]:
+        name, _, n = part.partition("=")
+        if name not in NGAMES:
+            sys.exit("--games-per-deck names %r, which is not in --decks (%s)"
+                     % (name, ", ".join(decks)))
+        NGAMES[name] = int(n)
+    if a.games_per_deck:
+        print("[alloc] %s  (total %d games)"
+              % (" ".join("%s=%d" % (d, NGAMES[d]) for d in decks), sum(NGAMES.values())),
+              flush=True)
 
     # Stamp the shuffle fingerprint. Two runs whose fingerprints differ did not play the same
     # games, so their logs must not be compared -- the same guard the screens carry.
@@ -137,12 +166,13 @@ def main():
         # same policy but not the same object, and any per-agent state (a scorer's cache, a
         # bank) would then differ between seats -- reintroducing an asymmetry the mirror exists
         # to remove.
-        agent, _scorer = make_agent(a.model, deck, ids, prof)
+        agent, _scorer = make_agent(a.deck_model or a.model, deck, ids, prof)
         _tap(_scorer)
         # Cross-deck: the protagonist needs its OWN agent, because make_agent bakes the
-        # decklist and the tuning profile in. The SCORER is cached across decks inside
-        # make_agent, so both agents still share one policy object -- the property the
-        # same-object rule above is really protecting.
+        # decklist and the tuning profile in. With no --deck-model the SCORER is cached across
+        # decks inside make_agent, so both agents still share one policy object -- the property
+        # the same-object rule above is really protecting. With --deck-model they are two
+        # different models on purpose, and only the per-deck mirror symmetry is preserved.
         if a.protagonist:
             pids = load_deck(a.protagonist)
             pagent, _psc = make_agent(a.model, a.protagonist,
@@ -211,7 +241,7 @@ def main():
             })
             return pick
 
-        for g in range(a.games):
+        for g in range(NGAMES[deck]):
             s = a.seed + g
             del pending[:]
             del tpicks[:]
@@ -240,7 +270,7 @@ def main():
                 out.write(json.dumps(row) + "\n")
                 n_rows += 1
         print("  %-22s %d games | seat0 %d - seat1 %d wins | rows %d | %.0fs"
-              % (deck, a.games, seat_wins[0], seat_wins[1], n_rows, time.time() - t0),
+              % (deck, NGAMES[deck], seat_wins[0], seat_wins[1], n_rows, time.time() - t0),
               flush=True)
 
     out.close()

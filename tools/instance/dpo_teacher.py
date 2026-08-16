@@ -191,6 +191,10 @@ def main():
     ap.add_argument("--probe", action="store_true",
                     help="overfit sanity: cap at 2000 pairs, 30 epochs, expect loss -> ~0")
     ap.add_argument("--seed", type=int, default=3407)
+    ap.add_argument("--grad-affinity", default="",
+                    help="write per-deck DPO gradient cosine similarities here and exit "
+                         "without training. Answers whether one LoRA can serve all decks: "
+                         "cos(g_A, g_B) > 0 means a step that improves A also improves B.")
     a = ap.parse_args()
     if a.probe:
         # 1000 pairs x 10 epochs ~ 40 min: enough passes over the same data that a healthy
@@ -271,6 +275,76 @@ def main():
         # REFERENCE checkpoint and report it as a continuation of --init-from.
         warm_start(model, getattr(tok, "tokenizer", tok), torch, a.init_from, n_base_vocab or 0)
         print("[ref] policy restored to %s" % a.init_from, flush=True)
+
+    if a.grad_affinity:
+        # Can ONE LoRA serve all eleven decks? The question is not whether the decks look alike
+        # but whether their UPDATES agree, and that is cos(g_A, g_B) on the real DPO loss: if it
+        # is positive, a step taken for A also improves B and sharing costs nothing; if it is
+        # negative, the shared adapter is being pulled two ways and one deck pays for the other.
+        # No optimiser steps are taken -- this is one backward pass per deck over that deck's own
+        # pairs, at the current checkpoint.
+        by_deck = {}
+        for r in rows:
+            by_deck.setdefault(r.get("deck") or "?", []).append(r)
+        by_deck = {k: v for k, v in by_deck.items() if len(v) >= 40}
+        names = sorted(by_deck, key=lambda k: -len(by_deck[k]))
+        print("[affinity] %d decks with >=40 pairs: %s"
+              % (len(names), ", ".join("%s(%d)" % (k, len(by_deck[k])) for k in names)), flush=True)
+        model.train()
+        params = [p for p in model.parameters() if p.requires_grad]
+        G = {}
+        for name in names:
+            model.zero_grad(set_to_none=True)
+            rs = by_deck[name]
+            for i in range(0, len(rs), a.bsz):
+                chunk = rs[i:i + a.bsz]
+                pw = completion_logprobs(model, tok, torch,
+                                         [(r["prompt"], r["cw"]) for r in chunk], a.maxlen)
+                pl = completion_logprobs(model, tok, torch,
+                                         [(r["prompt"], r["cl"]) for r in chunk], a.maxlen)
+                rw = torch.tensor([ref[id(r)][0] for r in chunk], device=pw.device)
+                rl = torch.tensor([ref[id(r)][1] for r in chunk], device=pw.device)
+                z = a.beta * ((pw - rw) - (pl - rl))
+                loss_pos = -torch.nn.functional.logsigmoid(z)
+                if a.cdpo_calibrated:
+                    eps = torch.tensor([r["eps"] for r in chunk], device=z.device, dtype=z.dtype)
+                    loss = ((1 - eps) * loss_pos
+                            - eps * torch.nn.functional.logsigmoid(-z)).mean()
+                else:
+                    loss = loss_pos.mean()
+                # Mean over the deck, not a sum: otherwise a deck with 1,622 pairs and one with
+                # 112 differ in gradient NORM by an order of magnitude and the cosine, which is
+                # scale-free, would still be fine -- but the centred version below subtracts a
+                # mean across decks and that is not.
+                (loss * (len(chunk) / len(rs))).backward()
+            g = torch.cat([(p.grad if p.grad is not None else torch.zeros_like(p)).reshape(-1)
+                           .float() for p in params]).cpu()
+            G[name] = g / (g.norm() + 1e-12)
+            print("  %-22s %5d pairs | grad norm %.4g" % (name, len(rs), float(g.norm())), flush=True)
+        model.zero_grad(set_to_none=True)
+
+        import json as _json
+        mean = torch.stack([G[n] for n in names]).mean(0)
+        out = {"decks": names, "pairs": {n: len(by_deck[n]) for n in names}, "raw": {}, "centred": {}}
+        for tag, vecs in (("raw", G),
+                          # Centred: every deck's gradient shares a large "play the game better"
+                          # component, and a cosine dominated by it says everything is similar
+                          # whatever the decks do. Subtracting the across-deck mean leaves the
+                          # deck-SPECIFIC direction, which is the only part a split can capture.
+                          ("centred", {n: (G[n] - mean) / ((G[n] - mean).norm() + 1e-12)
+                                       for n in names})):
+            print("\n[affinity/%s] cosine x100 (higher = updates agree):" % tag, flush=True)
+            print("%-22s %s" % ("", " ".join("%6s" % n[:6] for n in names)))
+            for x in names:
+                row = []
+                for y in names:
+                    c = float(torch.dot(vecs[x], vecs[y]))
+                    out[tag].setdefault(x, {})[y] = c
+                    row.append("%6.0f" % (100 * c))
+                print("%-22s %s" % (x, " ".join(row)))
+        _json.dump(out, open(a.grad_affinity, "w"), indent=1)
+        print("\n[affinity] wrote %s" % a.grad_affinity, flush=True)
+        return
 
     def eval_pairs(rs):
         if not rs:

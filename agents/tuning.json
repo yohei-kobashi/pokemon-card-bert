@@ -599,8 +599,12 @@
    345,
    117
   ],
-  "status": "candidate",
-  "style": "evolve"
+  "status": "submitted",
+  "style": "evolve",
+  "live": {
+   "last_submitted": "2026-08-16",
+   "submissions": 1
+  }
  },
  "crustle_stall": {
   "arch_mixin": true,
@@ -666,8 +670,8 @@
   },
   "live": {
    "best_score": 664.7,
-   "last_submitted": "2026-07-12",
-   "submissions": 10
+   "last_submitted": "2026-08-16",
+   "submissions": 11
   },
   "search_items": [
    1210
@@ -937,8 +941,82 @@
    "1198": "engine",
    "120": "line",
    "121": "win",
+   "1213": "tech",
    "1227": "engine",
-   "1231": "engine",
+   "1256": "tech",
+   "131": "line",
+   "132": "line",
+   "133": "win",
+   "140": "engine",
+   "2": "fuel",
+   "235": "tech",
+   "5": "fuel",
+   "7": "fuel"
+  },
+  "draw_supporters": [
+   1080,
+   1192,
+   1237
+  ],
+  "energy_denial_cards": [
+   1120
+  ],
+  "engine": "v2",
+  "l2": "dusknoir",
+  "line": {
+   "big": [
+    152,
+    154,
+    172
+   ],
+   "discard_fuel": [],
+   "dusk": {},
+   "focus": [
+    121,
+    133,
+    120
+   ],
+   "need": {
+    "120": 2,
+    "121": 2,
+    "133": 3
+   },
+   "stadiums": [
+    1256
+   ],
+   "support_energy": {
+    "112": 1
+   },
+   "support_etype": {
+    "112": 7
+   }
+  },
+  "search_items": [
+   1119,
+   1219,
+   1231
+  ],
+  "status": "candidate",
+  "style": "spread"
+ },
+ "dragapult_dusknoir_budew2": {
+  "archetype": "spread",
+  "card_roles": {
+   "1071": "engine",
+   "1080": "engine",
+   "1086": "engine",
+   "1097": "tech",
+   "112": "engine",
+   "1120": "tech",
+   "1121": "engine",
+   "1152": "engine",
+   "1161": "tech",
+   "1182": "engine",
+   "119": "line",
+   "1198": "engine",
+   "120": "line",
+   "121": "win",
+   "1227": "engine",
    "1256": "tech",
    "131": "line",
    "132": "line",
@@ -987,7 +1065,7 @@
   "search_items": [
    1231
   ],
-  "status": "candidate",
+  "status": "variant: Judge 1 -> Budew 2, for A/B only; not a submission candidate",
   "style": "spread"
  },
  "dudunsparce_box": {
@@ -3218,7 +3296,7 @@
   ]
  },
  "slowking": {
-  "_line_note": "Kyurem(144)/Metagross(276)/Zeraora(377) are AMMO for Slowking's Seek Inspiration (fires their attacks for {P}{C}); Metagross intentionally has no Metang/Rare Candy. Do NOT remove them as 'unplayable'. Energy 11->15 (+5.6pt) came from Ciphermaniac's x4, which is measured dead and whose stacking thesis was refuted.",
+  "_line_note": "DECK FIXED to the live top-20 composition (user decision 2026-08-09): Smoochum x2 / Conkeldurr(115) / Annihilape(224) / Ciphermaniac's(1188) x4. The pilot is held at slowking_hybrid until a replacement BEATS it -- SlowkingLiveL2 measured -14.6pt on all three decklists and its cause was never found, so it must not ship enabled.",
   "archetype": "combo",
   "card_roles": {
    "1071": "engine",
@@ -3249,42 +3327,38 @@
   "l2": "slowking_hybrid",
   "line": {
    "big": [
-    243,
-    371,
-    1092
+    146,
+    618,
+    188
    ],
    "discard_fuel": [
     5
    ],
    "focus": [
-    756,
-    272,
-    184,
-    163
+    163,
+    183
    ],
    "need": {
     "163": 2,
-    "184": 3,
-    "272": 2,
-    "756": 3
+    "183": 1
    },
    "stadiums": [
     1248
    ]
   },
   "main_attackers": [
-   756,
    163
   ],
   "residual_cards": [
    1092
   ],
   "seek_payloads": [
-   144,
-   276,
-   377
+   115,
+   224,
+   183,
+   144
   ],
-  "status": "hybrid: Mega Kangaskhan clock + Seek Inspiration secondary (modern competitive shape)",
+  "status": "piloted from the #1/#2 ladder agents' own replays: Kangaskhan walls and draws, Smoochum attacks for free energy, Slowking always Seeks",
   "style": "spread"
  },
  "staryu": {

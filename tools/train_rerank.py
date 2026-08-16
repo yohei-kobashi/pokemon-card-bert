@@ -344,7 +344,15 @@ def main():
         for nm, mk in (("full", None), ("-DECK[]", {"drop_deck": True}),
                        ("-ID ME", {"drop_identity": True}),
                        ("-both", {"drop_deck": True, "drop_identity": True})):
-            out.append(f"{nm} {evaluate(k, mk)[1]:.1f}%")
+            try:
+                out.append(f"{nm} {evaluate(k, mk)[1]:.1f}%")
+            except ValueError:
+                # mask_segments raises when the segment is not in the prompt at all -- the
+                # single-deck format drops DECK[] outright, and identify='op' never renders
+                # `ID ME`. That guard exists so a no-op mask is not misread as "the model
+                # ignores this segment", which is the right thing to shout about DURING an
+                # ablation and the wrong thing to end an eight-hour training run over.
+                out.append(f"{nm} n/a")
         return "  ".join(out)
 
     def save(seen):
@@ -371,12 +379,22 @@ def main():
             while j < len(block):
                 grp, npairs = [], 0
                 while j < len(block) and npairs < args.pair_batch:
+                    # Stop BEFORE overshooting. The test used to be made after the record was
+                    # already in, so a batch sitting at 31 pairs could still take a 24-candidate
+                    # decision and go out at 55 -- 1.7x the nominal size, at 512 tokens, on a
+                    # card the nominal size already fills to 16 GiB of 23.5. That tail is what
+                    # OOMs: it is rare enough to survive 1,700 steps and certain enough to
+                    # arrive eventually. A single record wider than pair_batch still gets its
+                    # own batch -- a listwise group cannot be split without changing the loss.
+                    if grp and npairs + len(block[j]["candidates"]) > args.pair_batch:
+                        break
                     grp.append(block[j]); npairs += len(block[j]["candidates"]); j += 1
                 out.append(grp)
         return out
 
     deadline = args.deadline_h * 3600
     seen = 0; step = 0; opt.zero_grad(); last_ckpt = time.time(); losses = []; n_ckpt = 0
+    n_oom = 0
     i = 0
     batches = length_batches(train_rows)
     random.Random(0).shuffle(batches)
@@ -426,25 +444,46 @@ def main():
             random.Random(step).shuffle(batches)
         if seen < resume_seen:                            # fast-forward on resume
             seen += len(grp); continue
-        loss = listwise_loss(grp) / args.accum
-        if _sp_ref is not None:
-            # Anchor term. Computed against a frozen fp32 copy of the STARTING weights, so it
-            # measures drift from this round's init -- not from a random init, which is what
-            # ordinary weight decay does and why weight decay does not prevent forgetting.
-            pen = 0.0
-            for n_, p_ in model.named_parameters():
-                if p_.requires_grad and n_ in _sp_ref:
-                    pen = pen + ((p_ - _sp_ref[n_]) ** 2).sum()
-            loss = loss + (args.l2sp * pen) / args.accum
-        loss.backward(); losses.append(float(loss) * args.accum)
+        try:
+            loss = listwise_loss(grp) / args.accum
+            if _sp_ref is not None:
+                # Anchor term. Computed against a frozen fp32 copy of the STARTING weights, so
+                # it measures drift from this round's init -- not from a random init, which is
+                # what ordinary weight decay does and why weight decay does not prevent
+                # forgetting.
+                pen = 0.0
+                for n_, p_ in model.named_parameters():
+                    if p_.requires_grad and n_ in _sp_ref:
+                        pen = pen + ((p_ - _sp_ref[n_]) ** 2).sum()
+                loss = loss + (args.l2sp * pen) / args.accum
+            loss.backward()
+        except torch.OutOfMemoryError:
+            # Skipping one batch costs a few dozen records; letting the exception out costs the
+            # whole round -- eight hours of a rented card, discovered hours later. The batcher
+            # bounds batch size, so this should stay at zero; the counter is printed precisely
+            # so that "it never fires" is a measurement and not an assumption.
+            del loss
+            opt.zero_grad(set_to_none=True)
+            torch.cuda.empty_cache()
+            n_oom += 1
+            continue
+        losses.append(float(loss) * args.accum)
         seen += len(grp); step += 1
         if step % args.accum == 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step(); opt.zero_grad()
         if step % 100 == 0:
             el = time.time() - t0
+            # Peak allocation, not current: an OOM is caused by the worst batch the loop has
+            # met, and the average tells you nothing about how close that came to the card.
+            # Reported per interval (the counter is reset) so a slow climb is visible as a
+            # climb rather than as a flat high-water mark.
+            pk = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
             log(f"  step {step} seen {seen} loss {statistics.mean(losses[-100:]):.3f} "
-                f"{el:.0f}s ({seen/max(1,el):.1f} rec/s)")
+                f"{el:.0f}s ({seen/max(1,el):.1f} rec/s) peak {pk:.2f} GiB"
+                + (f" OOM-skipped {n_oom}" if n_oom else ""))
+            if torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
         if time.time() - last_ckpt > 900:
             vl, va = evaluate(500); save(seen)
             log(f"  [eval] loss {vl:.3f} top1 {va:.1f}%  [ckpt] {time.time()-t0:.0f}s")

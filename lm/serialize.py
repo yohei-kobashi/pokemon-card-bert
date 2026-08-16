@@ -498,7 +498,7 @@ def glossary_ids(obs, deck_ids=None):
 GLOSSARY_MODES = ("full", "structured", "none")
 
 
-DECK_MODES = ("static", "remaining", "roles")
+DECK_MODES = ("static", "remaining", "roles", "none")
 
 
 def my_known_ids(obs):
@@ -567,6 +567,12 @@ def render_my_deck(deck_ids, obs=None, mode="static", shuffle=False, roles=None)
     also shrinks the segment as the game goes on, which is free speed."""
     if mode not in DECK_MODES:
         raise ValueError(f"deck mode must be one of {DECK_MODES}, got {mode!r}")
+    if mode == "none":
+        # instance1's single-deck rendering. The segment is a CONSTANT there -- one deck, one
+        # list -- so it carries no information and costs 57 of 371 tokens. Handled here rather
+        # than by callers passing deck_ids=None so that a caller which forgets cannot silently
+        # render the segment back in and score the model on inputs it never trained on.
+        return ""
     ids = _norm_ids(deck_ids)
     if not ids:
         return ""

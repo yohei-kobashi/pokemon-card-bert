@@ -1,0 +1,25 @@
+{
+ "decks": {
+  "dragapult_dusknoir": {
+   "fmt": "dusk",
+   "gate": {
+    "date": "2026-08-10",
+    "games": 600,
+    "opp": "dragapult_dusknoir",
+    "vs": "engine_v2",
+    "win": 61.5
+   },
+   "note": "pokehubguide list; adopted set + tips/spike (lmab7 +0.67); 2026-08-16",
+   "target": "hf:mrl_r2",
+   "wrap": "planfilter:lethal_now,clops_hold,judge_timing,spare_ex_bench,retreat_energy,stadium_replace,search_bottom,setup_search,front_dive,promote_dive,promote_line,lethal_boss,candy_line,noir_critical,stadium_bump,hammer_now,spike_candy,spike_race,hammer_spare,lethal_line,draw_cap"
+  }
+ },
+ "default": {
+  "fmt": "prompt",
+  "note": "the 11-deck fleet checkpoint (instance2, DPO round 7). Round 8 is the last fleet round; per-deck LoRAs replace it for the live top-5.",
+  "target": "qwen:dpo_r7"
+ },
+ "note": "deck -> adapter. Bare names resolve under $PTCG_MODELS (default /root/out on the vast boxes, <repo>/models locally). See lm/registry.py; edit with tools/adapters.py, not by hand.",
+ "root": null,
+ "version": 1
+}

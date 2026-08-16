@@ -1,7 +1,7 @@
 """Export the trained cross-encoder reranker to ONNX and dynamically quantize it to INT8.
 
 WHY: the reranker must ship inside a Kaggle submission tarball capped at 197.65625 MiB
-(207,257,600 bytes) and run on 4 vCPU. llama-cpp-python 0.3.34 (our bundled runtime) has no
+(207,257,600 bytes) and run on 2 vCPU. llama-cpp-python 0.3.34 (our bundled runtime) has no
 ModernBERT support, so the deploy runtime is ONNX Runtime instead.
 
 SIZE ARITHMETIC (why Gather must be quantized too): with the +2971 domain tokens the word

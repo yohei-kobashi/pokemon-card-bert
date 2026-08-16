@@ -50,8 +50,18 @@ for _p in (ROOT, os.path.join(ROOT, "cg-lib"), os.path.join(ROOT, "tools")):
 ACT = "[ACT]\n"          # must match valued_to_sft / the SFT pool
 
 
+# Defaults only. The real values arrive per job (see main): the pool is a SPAWN context, so a
+# module global assigned in main() never reaches a worker.
+_EMIT_RULE_W = False
+_RULE_EXCLUDE = frozenset()
+
+
 def _one_game(job):
-    (deck, seed, picks, targets, playouts, wseed, fmt, so, fp_want) = job
+    (deck, seed, picks, targets, playouts, wseed, fmt, so, fp_want, rule_cfg, doc_cfg) = job
+    doc_rules, doc_cap, doc_deck = doc_cfg
+    doc_left = doc_cap if doc_rules else 0
+    global _EMIT_RULE_W, _RULE_EXCLUDE
+    _EMIT_RULE_W, _RULE_EXCLUDE = rule_cfg
     import library
     from lm.actions import encode_option
     from lm.agent import make_lm_agent
@@ -106,6 +116,30 @@ def _one_game(job):
             pick = picks[t]
             if pick is None:
                 break                                     # the original game forfeited here
+            # Doctrine seeding: inject a synthetic target so the branch flows through the
+            # SAME playout/label/emit path as a margin-selected one (margin recorded as 0.0,
+            # nc as None -- the sync check skips None). Only the seeded deck's own decisions,
+            # only when the model did NOT already conform, only doc_cap times a game.
+            if doc_left > 0 and t not in want and isinstance(pick, list) and len(pick) == 1:
+                _yi0 = cur.get("yourIndex", 0)
+                if doc_deck is None or (d0, d1)[_yi0] == doc_deck:
+                    try:
+                        import dusk_plan
+                        _live = dusk_plan.opportunities(obs, _yi0)
+                    except Exception:                      # noqa: BLE001
+                        _live = {}
+                    for _rn in doc_rules:
+                        _hit = _live.get(_rn)
+                        if not _hit or not _hit[0]:
+                            continue
+                        if pick[0] in _hit[0]:
+                            continue                       # the model already conforms
+                        _nom = sorted(_hit[0])[0]
+                        if 0 <= _nom < len(raw):
+                            want[t] = (0.0, _nom, None)
+                            doc_left -= 1
+                            st["doctrine_" + _rn] += 1
+                            break
             if t in want:
                 margin, alt, nc_rec = want[t]
                 # Sync check BEFORE branching: a replay that has drifted produces states the
@@ -190,8 +224,27 @@ def _one_game(job):
                                 break
                             t += 1
                             continue
+                        rww = rwl = 0.0
+                        if _EMIT_RULE_W:
+                            try:
+                                import dusk_plan
+                                for _rn, (_good, _sc) in dusk_plan.opportunities(obs, yi).items():
+                                    if _rn in _RULE_EXCLUDE:
+                                        continue
+                                    _wt = dusk_plan.RULES[_rn][1]
+                                    if iw_raw in _good:
+                                        rww += _wt
+                                    if il_raw in _good:
+                                        rwl += _wt
+                            except Exception:                  # noqa: BLE001
+                                pass                           # rules must never sink a pair
                         out.append({
                             "prompt": ACT + state, "tw": str(iw), "tl": str(il),
+                            # The candidates as the MENU shows them -- what a cross-encoder
+                            # scores. tw/tl are the 4B's index-token coordinates; these are the
+                            # same two candidates in the reranker's coordinates.
+                            "cw": menu[iw], "cl": menu[il],
+                            "rww": round(rww, 2), "rwl": round(rwl, 2),
                             "qw": round(means[best], 4), "ql": round(means[1 - best], 4),
                             "margin": margin, "model_was": "w" if best == 0 else "l",
                             # `deck` is the deck the 4B is PILOTING at this decision, `opp`
@@ -237,8 +290,35 @@ def main():
                          "equivalent moves the dedup could not prove equal -- and the playouts "
                          "agree (neutral), so they spend budget and return nothing. The user's "
                          "original DPO sketch excluded same-card flips for exactly this reason.")
+    ap.add_argument("--fmt", default="prompt", choices=("prompt", "dusk"),
+                    help="'dusk' renders prompts in the single-deck no-DECK[] format for the "
+                         "DeBERTa mirror-RL loop; 'prompt' is instance2's cross-deck default")
+    ap.add_argument("--rule-weights", action="store_true",
+                    help="also emit each candidate's summed dusk_plan rule weight (rww/rwl), "
+                         "for blending rule conformance into the reward downstream")
+    ap.add_argument("--rule-exclude", default="spread_aim,energy_line,energy_focus,recon",
+                    help="rules NOT counted by --rule-weights: the deferred set that "
+                         "make_plan_rule executes at inference, which the model never decides")
     ap.add_argument("--playouts", type=int, default=16)
+    # DOCTRINE SEEDING (the reward-side half of the guide work, 2026-08-16). Margin-based
+    # selection only ever branches where the MODEL is unsure, and the alternative is the
+    # model's own runner-up -- a decision the model is confidently wrong about (never firing
+    # the spike, never taking the Candy line) is never branched, so the playouts never get to
+    # price the doctrine at all. These rules failed as inference-time CONSTRAINTS (crispin
+    # family 3x negative, third_loak -1.67): here they only propose the comparison, and the
+    # playout Q decides which side becomes the preferred half of the pair.
+    ap.add_argument("--doctrine-rules", default="",
+                    help="comma-separated dusk_plan rules used as branch SEEDS: at replayed "
+                         "decisions where the rule nominates a move the model did not take, "
+                         "branch (model move vs rule move) regardless of model margin")
+    ap.add_argument("--doctrine-per-game", type=int, default=2)
+    ap.add_argument("--doctrine-games", type=int, default=240,
+                    help="games WITHOUT margin targets (e.g. engine-piloted traces, which "
+                         "record no model margins) admitted for doctrine seeding alone")
     ap.add_argument("--workers", type=int, default=36)
+    ap.add_argument("--only-deck", default="",
+                    help="branch ONLY decisions made by this deck's side (per-deck opponent "
+                         "adapters: the other side is dusknoir and must not be trained here)")
     ap.add_argument("--seed", type=int, default=11000)
     ap.add_argument("--mirror-so", default="")
     a = ap.parse_args()
@@ -289,6 +369,12 @@ def main():
         for t, m in enumerate(g["meta"]):
             seat, margin, alt, nc = m[0], m[1], m[2], m[3]
             if margin is not None and alt is not None and margin >= a.margin_min:
+                # --only-deck spends the whole budget on ONE side's decisions. A trace of
+                # X vs dusknoir carries both, and training X's adapter on dusknoir's moves
+                # would teach X to pilot a deck it never holds -- half the budget, spent
+                # backwards. `deck` here is the (deck0, deck1) pair and the seat indexes it.
+                if a.only_deck and deck[seat] != a.only_deck:
+                    continue
                 cands[seat if a.seat_fair else 0].append((margin, t, alt, nc))
         for seat, cl in cands.items():
             cl.sort()
@@ -317,9 +403,30 @@ def main():
     by_game = collections.defaultdict(list)
     for deck, margin, seed, t, alt, nc in chosen:
         by_game[(deck, seed)].append((t, margin, alt, nc))
-    fmt = dict(rl_config.PROMPT_FMT)
+    # Margin selection only jobs games where the MODEL recorded uncertainty -- an
+    # engine-piloted trace records none and would never reach the doctrine seeder.
+    # Admit a bounded number of target-less games so their replays can still be seeded.
+    if any(x for x in a.doctrine_rules.split(",") if x) and a.doctrine_games > 0:
+        extra = [k for k in games if k not in by_game]
+        random.Random(a.seed).shuffle(extra)
+        for k in extra[:a.doctrine_games]:
+            by_game[k] = []
+        if extra:
+            print("doctrine: admitted %d target-less games (of %d) for seeding"
+                  % (min(len(extra), a.doctrine_games), len(extra)), flush=True)
+    fmt = dict(rl_config.DUSK_FMT if a.fmt == "dusk" else rl_config.PROMPT_FMT)
+    # THE CONFIG TRAVELS IN THE JOB TUPLE. It used to be assigned to module globals here, with
+    # a comment claiming workers inherit it "by fork" -- but the pool below is a SPAWN context,
+    # so every worker re-imports this module and gets the module-level defaults
+    # (_EMIT_RULE_W = False). The effect was silent and total: `--rule-weights` emitted rww=rwl=0
+    # on every pair of every mirror-RL round, so the rule-conformance third of the reward was
+    # never in the reward at all, and the downstream beta-blend degenerated into 30% label
+    # smoothing toward uniform.
+    rule_cfg = (bool(a.rule_weights), frozenset(x for x in a.rule_exclude.split(",") if x))
+    doc_cfg = (tuple(x for x in a.doctrine_rules.split(",") if x),
+               a.doctrine_per_game, a.only_deck or None)
     jobs = [(deck, seed, games[(deck, seed)]["picks"], tgts, a.playouts,
-             a.seed + 977 * j, fmt, so, fp_remote)
+             a.seed + 977 * j, fmt, so, fp_remote, rule_cfg, doc_cfg)
             for j, ((deck, seed), tgts) in enumerate(sorted(by_game.items()))]
 
     t0 = time.time()

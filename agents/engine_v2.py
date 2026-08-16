@@ -720,6 +720,9 @@ class BasePolicy:
         ctx.opp_threat = self.assess_opponent_setup(opp, me)
         ctx.ko_targets = self.assess_ko_targets(ctx)
         ctx.prize = self.assess_prize_race(ctx)
+        # the live context, for the few scorers whose signature predates Ctx (_bench_score /
+        # _setup_score take a bare cardId). Read-only, and only valid inside this act().
+        self._ctx = ctx
         return ctx
 
     def assess_self(self, state, mi):
@@ -1757,6 +1760,28 @@ class BasePolicy:
             # (3) a thin board loses to a single KO -- a body beats a spell
             if len(field) <= 2:
                 s += 40
+            # (4) bench EMPTY: the next KO ends the game, and only a BASIC can be benched.
+            # +40 was not enough -- a "win"-tier Stage 2 outranked it, so the marnie engine
+            # tutored Grimmsnarl ex off Spikemuth Gym into a lost bench-out (user-reported,
+            # 2026-08-17). This is an absolute constraint, not a preference.
+            if len(field) <= 1:
+                s += 500
+        elif card.cardType == CardType.POKEMON and not card.basic:
+            # The mirror of (4): on a thin board an evolution whose pre-evolution is
+            # NEITHER in play NOR in hand cannot become a body in time -- it loses to
+            # the tier table (win 900 vs line 600+40) exactly when the game is on the
+            # line. -350 flips that ordering; the full -500 applies once the bench is
+            # empty and only the lone Active could carry the evolve.
+            hand_ids = {getattr(h, "id", None) for h in (getattr(ctx.me_ps, "hand", None) or [])}
+            pre_near = any(
+                card.evolvesFrom and c2 is not None and card.evolvesFrom == c2.name
+                for c2 in (_CARDS.get(x) for x in
+                           [v.id for v in field] + [h for h in hand_ids if h]))
+            if not pre_near:
+                if len(field) <= 1:
+                    s -= 500
+                elif len(field) <= 2:
+                    s -= 350
         return s
 
     def decide_acquire(self, ctx):
@@ -1830,9 +1855,12 @@ class BasePolicy:
                             key=lambda i: -self._bench_score(self._opt_pk_id(ctx, opt[i])))
             # Returning FEWER than maxCount is how the engine declines: _mk truncates at
             # maxCount but only pads up to minCount, so a short list stands as-is.
-            # SETUP_BENCH_POKEMON is deliberately excluded -- at setup a body is a body
-            # and nothing has been conceded yet.
-            if c == SelectContext.TO_BENCH and _SPARE_EX_BENCH_SUB:
+            # SETUP_BENCH_POKEMON is excluded from the GLOBAL guard (at setup a body is a
+            # body and nothing has been conceded yet) but included for a policy that set
+            # _bench_sub_guard: a dedicated-matchup diet must hold from the first bench.
+            if (c == SelectContext.TO_BENCH and _SPARE_EX_BENCH_SUB) \
+                    or ((c in (SelectContext.TO_BENCH, SelectContext.SETUP_BENCH_POKEMON))
+                        and getattr(self, "_bench_sub_guard", False)):
                 keep, taken = [], []
                 for i in ranked:
                     cid = self._opt_pk_id(ctx, opt[i])
@@ -5915,12 +5943,1116 @@ class HybridSlowkingL2(SlowkingComboL2):
         # No forced Slowking pivot (Kangaskhan is primary); keep the ping-pong-safe base.
         return ConfigL2.decide_retreat(self, ctx)
 
+class SlowkingLiveL2(ConfigL2):
+    """slowking, written from what the #1 and #2 LADDER AGENTS actually do with this list.
+
+    Not inferred -- read off 49 of their games (2,977 decisions) with tools/replay_profile.py.
+    The three role assignments below are all INVERTED in the pilot this replaces, which is why
+    the scouted decklist measured as a regression: we were running the right cards with the
+    wrong plan.
+
+        their attacks        Seek Inspiration 36 | Delightful Kiss 28 | Destined Fight 8
+                             Trifrost 7 | Gutsy Swing 4 | Super Psy Bolt 2
+                             **Rapid-Fire Combo 1** -- Mega Kangaskhan attacks ONCE in 49 games
+        their Active         Slowking 38.4% | Mega Kangaskhan 35.7% | Smoochum 13.2%
+
+    1. **Mega Kangaskhan ex is a WALL, not an attacker.** 300 HP in the Active Spot running
+       Run Errand (draw 2) every turn. It attacks essentially never because it holds no
+       energy -- and that is a CHOICE, not an accident: the list runs 8-10 energy total and
+       all of it belongs to Slowking. Keeping energy off Kangaskhan is what makes it a wall,
+       so the fix is in `decide_energy_target`, not in `decide_attack`.
+
+    2. **Smoochum ATTACKS.** Delightful Kiss costs NOTHING (`energies=[]`) and fetches two
+       basic {P} from the deck onto the Bench. It is 30% of their attacks and it is the whole
+       reason an 8-energy list functions. Our engine would never choose it: the attack shows
+       0 damage, the same display trap that hid Seek Inspiration for months.
+
+    3. **Slowking always Seeks.** Super Psy Bolt (120) is used twice in 49 games. Seek is
+       {P}{C} and copies Conkeldurr's Gutsy Swing (250) or Annihilape's Impact Blow (160)
+       when one is on top -- and mills the deck toward one when it is not.
+    """
+
+    _SLOWKING, _SEEK, _PSYBOLT = 163, 213, 214
+    _KANGA, _RUN_ERRAND = 756, None
+    _SMOO, _KISS = 183, 242
+    _ACADEMY, _CIPHER = 1248, 1188
+    _GREETERS = (184, 1071)
+
+    def _pay(self):
+        return frozenset(self.profile.get("seek_payloads") or ())
+
+    def _energy_on(self, ctx, cid):
+        return sum(v.energy_count for v in ctx.me.inplay() if v.id == cid)
+
+    def _starving(self, ctx):
+        """Slowking needs {P}{C}; anything less and the deck has no attack worth making."""
+        return self._energy_on(ctx, self._SLOWKING) < 2
+
+    def decide_energy_target(self, ctx):
+        # Energy belongs to Slowking. Feeding Kangaskhan turns the wall into a 3-energy
+        # attacker and starves the Seek engine -- the shipped profile listed Kangaskhan first
+        # in main_attackers, so every attach went to it.
+        if ctx.attaches and not ctx.state.energyAttached:
+            energy_atts = self._energy_attach_opts(ctx)
+            for i in energy_atts:
+                v = self._target_view(ctx, ctx.sel.option[i])
+                if v is not None and v.card is not None and v.card.cardId == self._SLOWKING:
+                    return [i]
+        return super().decide_energy_target(ctx)
+
+    def decide_ability(self, ctx):
+        # Run Errand: free two cards every turn Kangaskhan is Active. This is what the wall
+        # is FOR, and it is the deck's whole draw engine.
+        a = ctx.me.active
+        if a is not None and a.id == self._KANGA:
+            for i in ctx.abilities:
+                pk = ctx.field_pk(ctx.sel.option[i])
+                if pk is not None and pk.id == self._KANGA:
+                    return [i]
+        # Academy at Night: put a payload on top for Slowking to Seek next.
+        if self._pay() and any(v.id == self._SLOWKING for v in ctx.me.inplay()) \
+                and ({h.id for h in (ctx.me_ps.hand or [])} & self._pay()):
+            for i in ctx.abilities:
+                pk = ctx.field_pk(ctx.sel.option[i])
+                cid = pk.id if pk is not None else self._opt_card_id(ctx, ctx.sel.option[i])
+                if cid == self._ACADEMY:
+                    self._sk_placing = True
+                    return [i]
+        return super().decide_ability(ctx)
+
+    def choose_sub(self, ctx):
+        # Only the follow-up of a placer we just chose: SelectContext.TO_DECK also covers
+        # ordinary "shuffle this back" costs, and answering those with a payload buries our
+        # own ammo.
+        if getattr(self, "_sk_placing", False) and ctx.sel.context == SelectContext.TO_DECK:
+            self._sk_placing = False
+            opt = ctx.sel.option
+            for i in range(len(opt)):
+                if self._opt_card_id(ctx, opt[i]) in self._pay():
+                    return [i]
+        return super().choose_sub(ctx)
+
+    def decide_active(self, ctx, mode="setup"):
+        opt = ctx.sel.option
+
+        def pick(ids):
+            for i in range(len(opt)):
+                pk = ctx.field_pk(opt[i])
+                cid = pk.id if pk is not None else self._opt_card_id(ctx, opt[i])
+                if cid in ids:
+                    return [i]
+            return None
+        # Charged Slowking first (it is the attacker), then Smoochum while energy is short
+        # (its attack is free and fetches two), then Kangaskhan to wall and draw.
+        if not self._starving(ctx):
+            r = pick({self._SLOWKING})
+            if r:
+                return r
+        else:
+            r = pick({self._SMOO})
+            if r:
+                return r
+        for tier in ({self._KANGA}, {self._SLOWKING}, set(self._GREETERS), {162}):
+            r = pick(tier)
+            if r:
+                return r
+        return super().decide_active(ctx, mode)
+
+    def decide_attack(self, ctx):
+        a = ctx.me.active
+        if a is None:
+            return super().decide_attack(ctx)
+        if a.id == self._SMOO:
+            # 0 damage, 0 cost, two energy onto the bench. _best_attack scores by damage and
+            # would decline it forever.
+            for i in ctx.attacks:
+                if ctx.sel.option[i].attackId == self._KISS:
+                    return [i]
+        if a.id == self._SLOWKING:
+            for i in ctx.attacks:
+                if ctx.sel.option[i].attackId == self._SEEK:
+                    return [i]
+        return super().decide_attack(ctx)
+
+
+class DuskNoirL2(ConfigL2):
+    """dragapult_dusknoir, with the findings of the Phantom Dive forensics written down.
+
+    WHAT THE FORENSICS SAID (4 opponents x 300 games, tools/dusk_ogerpon_audit.py and the
+    setup table in tools/gate_protagonist.py). The chain to a Phantom Dive is
+
+        Dragapult ex in play  ->  a body can pay {R}{P}  ->  that body is ACTIVE  ->  dive
+
+    and each arrow loses games. The measured drops name which arrow to fix:
+
+      * in play -> can pay   : -7..-9pt on three opponents, but -20pt against ogerpon_mono,
+        whose Crushing Hammers take 1.58 energies per game off the line. ENERGY.
+      * can pay -> is ACTIVE : -20..-25pt on EVERY opponent, and two full turns of clock
+        (payable at our turn ~4.5, active at ~6.5-7.5). PROMOTION. This is the big one.
+      * is ACTIVE -> dive    : 125/125, 178/178, 199/207, 199/200. Already perfect; forcing
+        it measured +0.33 +- 0.87. Nothing to win here, and the rule that tried was dropped.
+
+    So the promotion arrow gets the work. The structural cause is visible in `main_ladder`:
+    `step_attack` runs BEFORE `step_retreat`, and `FocusL2.rule_promote_focus` bails out at
+    `if ctx.attacks` -- so an Active that can throw ANY chip attack (Drakloak's Jet Headbutt,
+    Budew's Itchy Pollen; measured 184 and 153 uses against ogerpon vs 85 Phantom Dives)
+    permanently outranks a 200-damage Dragapult ex sitting on the bench. Against ogerpon_mono
+    a payable Dragapult ex sat benched for 118 turns and we took a promote/retreat option on
+    72 of them.
+
+    Every rule here is OFF by default and switched on by `line.dusk` in tuning.json, so this
+    class with no config is byte-identical to ConfigL2 and the A/B is paired.
+    """
+
+    DREEPY, DRAKLOAK, PULT = 119, 120, 121
+    DUSKULL, DUSCLOPS, DUSKNOIR = 131, 132, 133
+    BUDEW = 235
+    PHANTOM_DIVE = 154
+    LINE = (DREEPY, DRAKLOAK, PULT)
+    # The ogerpon_mono matchup, as one meshed plan (`ogre` in DUSK_RULES / line.dusk).
+    # Verified card facts the rules lean on:
+    #   Teal Mask Ogerpon ex: 210 HP, Basic, retreat 1; Teal Dance attaches {G} from hand
+    #   + draws; Myriad Leaf Shower = 30 + 30 x (energy on BOTH Actives).
+    #   Their list: 4x Ogerpon and NOTHING else -- every KO we take is 2 prizes, three
+    #   clean KOs is the game. ~23 Items (4 Hammer, 4 Tera Orb, 4 Bug Catching Set,
+    #   3 Jumbo Ice Cream = heal 80 if 3+ energy, 1 Hero's Cape +100), 2 Lively Stadium
+    #   (+30 HP to all BASICS -> 240), Boss x2, Judge/Lillie x8.
+    # Ours: Phantom Dive 200 + 6 bench counters; Jet Headbutt 70 for ONE colorless (the
+    # charging Dragapult still hits); Adrena-Brain moves up to 3 counters ACROSS (heal our
+    # diver AND finish their 10); Watchtower bounces their stadium; Crushing Hammer x3 and
+    # Handheld Fan keep Myriad Leaf Shower and Jumbo Ice Cream below their thresholds.
+    OGERPON = 96
+    MUNKIDORI, FEZ, MEOWTH = 112, 140, 1071
+    HAMMER, WATCHTOWER, LIVELY, FAN, CRISPIN = 1120, 1256, 1251, 1161, 1198
+    STRETCHER, RUINS, JAMMING = 1097, 1260, 1246
+    OUR_STADIUMS = (WATCHTOWER, RUINS, JAMMING)
+    FIRE_E, PSY_E, DARK_E = 2, 5, 7      # basic-energy card ids == their energy types
+    # A line card is dead in hand without the body it evolves from. This is the engine-side
+    # twin of plan_filter's `search_bottom`, which measured +6.55 +- 1.13 on the encoder and
+    # +10.62 +- 1.89 on the bare 4B -- the largest single gain of the project.
+    PREREQ = {DRAKLOAK: DREEPY, PULT: DRAKLOAK, DUSCLOPS: DUSKULL, DUSKNOIR: DUSCLOPS}
+    LINE_TARGET = 2            # Dreepy+Drakloak bodies wanted before anything else is searched
+    SETUP_TURNS = 6
+
+    def __init__(self, deck, profile=None):
+        super().__init__(deck, profile)
+        d = dict(((profile or {}).get("line") or {}).get("dusk") or {})
+        # DUSK_RULES=front,charge,search,bench[,cap=2] overrides the config for ABLATION.
+        # The A/B runs two processes with the same --seed rather than two arms in one, so the
+        # switch has to be reachable from the environment; tuning.json stays the shipped value.
+        env = os.environ.get("DUSK_RULES")
+        if env is not None:
+            d = {}
+            for tok in env.split(","):
+                tok = tok.strip()
+                if not tok:
+                    continue
+                k, _, v = tok.partition("=")
+                d[k] = int(v) if v else True
+        self._d_front = bool(d.get("front"))        # promote the body closest to a dive
+        self._d_charge = bool(d.get("charge"))      # attach toward {R}{P}, and stop at 2
+        self._d_search = bool(d.get("search"))      # prohibition + setup priority on searches
+        self._d_bench = bool(d.get("bench"))        # develop Dreepy first
+        self._d_cap = int(d.get("energy_cap") or 0)  # 0 = off; vs energy-scaling attackers
+        self._d_spread = bool(d.get("spread"))      # counters that make bodies dive-lethal
+        self._d_boss = bool(d.get("boss"))          # drag the wounded one into the dive
+        self._d_ogre = bool(d.get("ogre"))          # the ogerpon_mono meshed plan
+        # The GAMBIT (user 2026-08-16): against ogerpon only the fast-assembly branch of
+        # the draw distribution wins, so stop hedging for the slow branch -- dig through
+        # brick hands with shuffle-draw regardless of hand size, and focus every energy
+        # on one body (the anti-hammer split is a hedge that only pays in long games the
+        # gambit has already written off).
+        self._d_rush = bool(d.get("rush"))
+        if self._d_boss:
+            self.ladder = ("rule_boss_the_wounded",) + self.ladder
+        if self._d_front:
+            self.ladder = ("rule_front_the_dive",) + self.ladder
+        if self._d_ogre:
+            # Order: take the free KOs first (close), then remove their +30 before any
+            # damage math is settled (stadium), then the supporter that fuels us
+            # (crispin), then the items that slow their ramp (hammer, fan). front/boss
+            # keep their existing slots below these.
+            self.ladder = ("rule_ogre_close", "rule_ogre_attach", "rule_ogre_stadium",
+                           "rule_ogre_crispin", "rule_rush_dig", "rule_ogre_stretcher",
+                           "rule_ogre_stamp", "rule_ogre_hammer", "rule_ogre_trap",
+                           "rule_ogre_fan") + self.ladder
+            # Route the TO_BENCH sub-select (Poffin's direct-to-bench path) through
+            # _is_spare_ex_sub, where the ogre diet below can DECLINE -- score ranking
+            # alone cannot: round 1 measured Duskull@bench deaths going UP (209 -> 351)
+            # because the diet reordered the menu but the engine still filled maxCount.
+            self._bench_sub_guard = True
+            # A wide bench is TIME. Their six prizes come one chaff kill per turn, so
+            # every extra 1-prize body on our bench is a full extra turn of fuel and
+            # draws; the diet above keeps the bench pure, this makes it deep.
+            self.bench_target = 5
+
+    # ----- shared perception ---------------------------------------------- #
+    def _pd_cost(self):
+        a = _ATTACKS.get(self.PHANTOM_DIVE)
+        return list(a.energies or []) if a is not None else []
+
+    def _can_dive(self, v):
+        """Does THIS body have Phantom Dive available right now? Asked through the
+        engine's own `ready` list so it is the same payment test the engine resolves
+        with -- a hand-rolled {R}{P} check would drift from _can_pay."""
+        return v is not None and any(aid == self.PHANTOM_DIVE for aid, _d, _c in v.ready)
+
+    def _dive_progress(self, v, extra=None):
+        """How close is this body to a Phantom Dive: 2 = can dive, 1 = one energy short,
+        0 = not on the line at all. `extra` asks the question about a hypothetical attach."""
+        if v is None or v.id not in self.LINE:
+            return 0
+        have = list(v.energy) + ([extra] if extra is not None else [])
+        cost = self._pd_cost()
+        if not cost:
+            return 0
+        if _can_pay(cost, have):
+            return 2 if v.id == self.PULT else 1     # only Dragapult ex actually HAS the attack
+        for e in cost:                               # one short, and typed-correct so far
+            if _can_pay([x for x in cost if x != e][:len(have)], have):
+                return 1
+        return 1 if have else 0
+
+    def _line_bodies(self, ctx):
+        return sum(1 for v in ctx.me.inplay() if v.id in (self.DREEPY, self.DRAKLOAK, self.PULT))
+
+    def _pd_damage(self):
+        a = _ATTACKS.get(self.PHANTOM_DIVE)
+        return (a.damage or 0) if a is not None else 0
+
+    # ----- 5. the six counters are a KO SETUP, not chip damage -------------- #
+    def decide_target(self, ctx, kind):
+        """Phantom Dive's six bench counters, spent so that each one CREATES a target.
+
+        The base scorer biases spread onto the LOWEST-hp body (`base += 10000 - pk.hp`),
+        so every counter of a dive lands on the same Pokemon -- measured against
+        ogerpon_mono, 485 of 613 counters went to the bench and 0 games were won by it.
+        The arithmetic says why that is the wrong pile: Phantom Dive hits the Active for
+        200 and Teal Mask Ogerpon ex has 210 HP, so a benched body needs exactly ONE
+        counter to become a Boss's Orders away from a prize. Six counters on one body is
+        one 60-damage Pokemon; six counters on six bodies is six lethal ones.
+        """
+        # trap-gust target (#4): rule_ogre_trap played the Boss for TEMPO -- the base
+        # gust scorer would drag the biggest threat in; the trap wants the EMPTY one.
+        if kind == "gust" and getattr(self, "_trap_gust", False) and self._ogre(ctx):
+            self._trap_gust = False
+            opt2 = ctx.sel.option
+
+            def tk(i):
+                pk = ctx.opp_pokemon_at(opt2[i])
+                return len(pk.energies or []) if pk is not None else 99
+            return sorted(range(len(opt2)), key=tk)
+        if not self._d_spread or kind != "spread":
+            return super().decide_target(ctx, kind)
+        opt = ctx.sel.option
+        dive = self._pd_damage()
+        remain = (getattr(ctx.sel, "remainDamageCounter", None) or 0) * 10
+        # Is the dive still available THIS turn? These menus come from Cursed Blast /
+        # Adrena-Brain, which never end the turn -- so an Active that these counters
+        # bring within 200 dies to the dive that follows. Phantom Dive's own placement
+        # menu is bench-only, so this term never double-counts its own damage.
+        a = ctx.me.active
+        atk = dive if (a is not None and self._can_dive(a)) else 0
+
+        def sc(i):
+            o = opt[i]
+            pk = ctx.opp_pokemon_at(o)
+            if pk is None:
+                return (-1, 0)
+            hp = pk.hp or 0
+            # A body THESE counters finish outranks every bank: this is the Adrena-Brain /
+            # Cursed Blast close (the dive's own menu is bench-only, where the same test
+            # catches a 60-or-less body). Without this tier the ACTIVE ranked last and an
+            # Adrena fired to kill a 10 HP survivor sent its counters to the bench.
+            if 0 < hp <= remain:
+                return (3, -hp)
+            if o.area == AreaType.ACTIVE:
+                # Blast + Dive combo: counters that bring the Active into the 200's
+                # range ARE a kill, same tier -- without this the 13 counters of a
+                # combo-fired Dusknoir drained to the bench and the 330 never landed.
+                if atk and 0 < hp <= remain + atk:
+                    return (3, -hp)
+                return (0, 0)                     # the Active is already taking the 200
+            over = hp - dive
+            if over > 0:
+                # #3: among bank targets, the most-CHARGED body first -- energy is the
+                # best available predictor of which one they promote next.
+                return (2, -over, -len(pk.energies or []))
+            return (1, -hp, 0)                    # already lethal: pile on only as a last resort
+        return sorted(range(len(opt)), key=lambda i: sc(i) + (0,) * (3 - len(sc(i))),
+                      reverse=True)
+
+    # ----- 6. cash the setup ------------------------------------------------ #
+    def rule_boss_the_wounded(self, ctx):
+        """When the Active cannot be knocked out by a dive but a benched body can, the
+        gust IS the attack. Boss's Orders was offered on 629 turns and played on 208."""
+        a = ctx.me.active
+        if not self._can_dive(a):
+            return None
+        dive = self._pd_damage()
+        oa = ctx.opp.active
+        if oa is not None and oa.hp <= dive:
+            return None                            # what is in front already dies
+        if not any((v.hp or 0) <= dive for v in ctx.opp.bench):
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c and self._in_bucket(c, _GUST):
+                return [i]
+        return None
+
+    # ----- 7. the ogerpon_mono meshed plan (`ogre`) -------------------------- #
+    def _ogre(self, ctx):
+        return self._d_ogre and any(v.id == self.OGERPON for v in ctx.opp.inplay())
+
+    def _ogre_intel(self, ctx):
+        """Counting, made a data structure. The opponent's DISCARD is public and their
+        LIST is known (the user's premise): the difference is what they still hold.
+        Every human counter-play below keys off one of these numbers -- most importantly
+        boss_left, because with both Boss's Orders spent NOTHING they run touches our
+        bench, and every bench-diet tax stops being worth paying."""
+        disc = [getattr(c, "id", None) for c in (ctx.opp_ps.discard or [])]
+        inplay = [v.id for v in ctx.opp.inplay()]
+        st = [getattr(c, "id", None) for c in (ctx.state.stadium or [])]
+        return {
+            "boss_left": max(0, 2 - disc.count(1182)),
+            "lively_left": max(0, 2 - disc.count(self.LIVELY) - st.count(self.LIVELY)),
+            "cape_left": max(0, 1 - disc.count(1159)),
+            "hammer_left": max(0, 4 - disc.count(self.HAMMER)),
+            "ice_left": max(0, 3 - disc.count(1147)),
+            "briar_left": max(0, 1 - disc.count(1201)),
+            "bodies_left": max(0, 4 - disc.count(self.OGERPON)) ,
+            "bodies_off_board": max(0, 4 - disc.count(self.OGERPON) - inplay.count(self.OGERPON)),
+        }
+
+    def _ogre_movable(self, ctx):
+        """Counters Adrena-Brain can send: up to 3, from ONE living body of ours."""
+        best = 0
+        for v in ctx.me.inplay():
+            if (v.hp or 0) <= 0:
+                continue
+            best = max(best, min(30, (v.max_hp or 0) - (v.hp or 0)))
+        return (best // 10) * 10
+
+    def rule_ogre_close(self, ctx):
+        """Fire the abilities that TAKE a knock-out, or keep the diver alive.
+
+        Adrena-Brain is both halves of the plan at once: their 210s survive a dive at
+        exactly 10, and the damage they land on our 320 is the counter supply -- moving
+        it heals the diver AND finishes their body, without ending the turn. Fired when
+        it kills, or as pure sustain once the diver carries 30+.
+
+        The Cursed Blasts are AMMUNITION, not a last resort. The trade is 1 prize for 2
+        every time, and they field exactly FOUR attackers -- each blast KO thins the
+        only win condition they have. So: Dusknoir fires on any body in its 130, and
+        Dusclops on any body in its 50, with two economies kept: a kill the dive takes
+        for free this turn is not paid for with a prize, and a BENCH target (which
+        cannot heal) waits for the Dusknoir in hand that does 2.6x at the same cost.
+        One hard stop: never hand them their LAST prize unless the blast wins first."""
+        if not self._ogre(ctx) or not ctx.abilities:
+            return None
+        opt = ctx.sel.option
+        mv = self._ogre_movable(ctx)
+        opp_hps = [(v.hp or 0) for v in ctx.opp.inplay()]
+        kill_mv = mv > 0 and any(0 < h <= mv for h in opp_hps)
+        diver = None
+        for v in ctx.me.inplay():
+            if v.id in self.LINE and (diver is None or v.energy_count > diver.energy_count):
+                diver = v
+        heal = (diver is not None and diver.energy_count > 0
+                and ((diver.max_hp or 0) - (diver.hp or 0)) >= 30)
+        my_left = ctx.prize.mine if ctx.prize else 99
+        opp_left = ctx.prize.opp if ctx.prize else 99
+        oa = ctx.opp.active
+        act_hp = (oa.hp or 0) if oa is not None else 0
+        bench_hps = [(v.hp or 0) for v in ctx.opp.bench]
+        a = ctx.me.active
+        dive_now = a is not None and self._can_dive(a)
+        hand_ids = [getattr(h, "id", None) for h in (ctx.me_ps.hand or [])]
+
+        dive = self._pd_damage()
+        # What the ACTIVE needs on top of this turn's dive: the COMBO case. With the
+        # dive available, a blast is worth firing exactly when act_hp sits in
+        # (dive, dive + reach] -- Blast first (does not end the turn), then the 200
+        # finishes. 330 total is the Hero's-Cape answer; 250 covers a fresh Lively 240.
+        needed = (act_hp - dive) if (dive_now and act_hp > dive) else None
+        clops_here = any(ctx.field_pk(opt[j]) is not None
+                         and ctx.field_pk(opt[j]).id == self.DUSCLOPS
+                         for j in ctx.abilities)
+
+        def blast_ok():
+            """A blast that takes 2 wins us the game at my_left<=2 BEFORE their prize
+            from our self-KO matters; otherwise never blast into their last prize."""
+            return my_left <= 2 or opp_left > 1
+        for i in ctx.abilities:
+            pk = ctx.field_pk(opt[i])
+            if pk is None:
+                continue
+            if pk.id == self.MUNKIDORI:
+                combo_mv = needed is not None and mv > 0 and needed <= mv
+                # bank: with Risky Ruins seeding counters on our own Basics, the
+                # once-per-turn move is free value even without a kill -- 30 a turn
+                # toward a body still above the dive's 200.
+                bank = mv >= 10 and any((v.hp or 0) > dive for v in ctx.opp.inplay())
+                if kill_mv or combo_mv or heal or bank:
+                    return [i]
+            # DOOMED-BLAST (Duskull-line audit, 2026-08-16): a Dusclops/Dusknoir that is
+            # our ACTIVE and inside their ready damage dies THIS rotation whatever we
+            # do -- the only choice is whether its counters die with it. Firing into
+            # the bank (the spread scorer routes them at the most-charged out-of-range
+            # body) converts a mute death into 50/130 banked.
+            _mine_v = pk and PokemonView(pk, self.roles.get(pk.id))
+            _doomed = (ctx.me.active is not None and pk is ctx.me.active.pk
+                       and ctx.opp.active is not None
+                       and ctx.opp.active.best_ready_dmg >= (pk.hp or 0) > 0)
+            if pk.id == self.DUSKNOIR and blast_ok():
+                bench_kill = any(0 < h <= 130 for h in bench_hps)
+                act_kill = 0 < act_hp <= 130 and not dive_now
+                # combo: only when the cheaper finishers cannot cover it -- Adrena is
+                # free and Dusclops costs the same prize for the sub-50 gap.
+                act_combo = needed is not None and needed <= 130 \
+                    and needed > mv and not (clops_here and needed <= 50)
+                if bench_kill or act_kill or act_combo or my_left <= 2 or _doomed:
+                    return [i]
+            if pk.id == self.DUSCLOPS and blast_ok():
+                noir_waiting = self.DUSKNOIR in hand_ids
+                bench_kill = any(0 < h <= 50 for h in bench_hps)
+                act_kill = 0 < act_hp <= 50 and not dive_now
+                act_combo = needed is not None and needed <= 50 and needed > mv
+                # the ACTIVE can heal (Jumbo Ice Cream) or grow a Cape -- take it now
+                # even with Dusknoir waiting; a bench target keeps for the upgrade.
+                if act_kill or act_combo or (bench_kill and not noir_waiting) \
+                        or my_left <= 2 or _doomed:
+                    return [i]
+        return None
+
+    def rule_ogre_attach(self, ctx):
+        """Attach BEFORE the supporter step. main_ladder runs trainer -> attach, so our
+        own Lillie's Determination (x4, shuffle-draw) was flushing the held {R}/{P} back
+        into the deck one step before the attach could bank it. The manual attach is
+        free and once per turn: the moment a positive line target exists, take it."""
+        if not self._ogre(ctx) or ctx.state.energyAttached or not ctx.attaches:
+            return None
+        return self.decide_energy_target(ctx)
+
+    def rule_rush_dig(self, ctx):
+        """GAMBIT: a hand with no {R}/{P}, no Dragapult ex and no Rare Candy cannot
+        advance the only plan that wins -- shuffle it away NOW, at any hand size. The
+        default draw threshold (hand <= 5) is calibrated for hedged play; the gambit
+        pays cards for tempo because the slow branch is already conceded."""
+        if not (self._d_rush and self._ogre(ctx)) or ctx.state.supporterPlayed:
+            return None
+        cost = self._pd_cost()
+        if any(v.id in self.LINE and _can_pay(cost, v.energy) for v in ctx.me.inplay()):
+            return None
+        hand = [getattr(h, "id", None) for h in (ctx.me_ps.hand or [])]
+        if any(x in hand for x in (self.FIRE_E, self.PSY_E, self.PULT, 1079,
+                                   self.DRAKLOAK, self.CRISPIN)):
+            return None                          # the hand still advances the plan
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId in (1227, 1213):   # Lillie / Judge
+                return [i]
+        return None
+
+    def rule_ogre_stretcher(self, ctx):
+        """Night Stretcher as the third fuel source. 6 basic {R}/{P} in 60 cards is the
+        whole budget, and every one that hits the discard (Ultra Ball costs, retreat,
+        hammered) is 17% of it -- the recover item puts one back in hand for free."""
+        if not self._ogre(ctx):
+            return None
+        cost = self._pd_cost()
+        if any(v.id in self.LINE and _can_pay(cost, v.energy) for v in ctx.me.inplay()):
+            return None
+        hand_e = sum(1 for h in (ctx.me_ps.hand or [])
+                     if getattr(h, "id", None) in (self.FIRE_E, self.PSY_E))
+        if hand_e >= 2:
+            return None
+        disc = [getattr(x, "id", None) for x in (ctx.me_ps.discard or [])]
+        if self.FIRE_E not in disc and self.PSY_E not in disc:
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId == self.STRETCHER:
+                return [i]
+        return None
+
+    def rule_ogre_stadium(self, ctx):
+        """The stadium war, in priority order.
+
+        Risky Ruins is SLAMMED the moment the table is empty: every Basic non-{D} they
+        bench after it lands at 190 -- inside Phantom Dive's 200 forever. The self-chip
+        on our own Basics costs nothing here (their 70+ attacks one-shot the chaff with
+        or without it, and Adrena-Brain turns the counters into ammunition).
+        Their Lively Stadium makes every Ogerpon 240 (dive arithmetic 200+40), so it is
+        bumped on sight -- with Ruins first (bump AND mark) and Watchtower as the
+        second bullet ({C}-only text touches neither side here; it exists to bounce)."""
+        if not self._ogre(ctx) or ctx.state.stadiumPlayed:
+            return None
+        st = ctx.state.stadium
+        empty = not st
+        lively = bool(st) and any(getattr(c, "id", None) == self.LIVELY for c in st)
+        if not (empty or lively):
+            return None
+        # Priority among OUR stadiums vs ogerpon: Jamming Tower first (it kills Hero's
+        # Cape and Jumbo Ice Cream is unaffected but the Cape is the 310-HP problem),
+        # then Ruins (bump + mark), Watchtower last (bump only).
+        best = None
+        order = {self.JAMMING: 0, self.RUINS: 1, self.WATCHTOWER: 2}
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is None or c.cardId not in order:
+                continue
+            if best is None or order[c.cardId] < order[best[1]]:
+                best = (i, c.cardId)
+        if best is None:
+            return None
+        if empty or lively:
+            # Watchtower on an EMPTY table is a spent bump with nothing to bump -- hold
+            # it for their Lively unless it is all we will ever draw.
+            if best[1] == self.WATCHTOWER and empty:
+                return None
+            return [best[0]]
+        return None
+
+    def rule_ogre_crispin(self, ctx):
+        """While no line body can pay {R}{P}, the supporter IS Crispin -- the deck's only
+        acceleration in a matchup where hammers strip 1.58 energies a game and the fuel
+        is the whole game ({R}{P} banked in 24% of games without it)."""
+        if not self._ogre(ctx) or ctx.state.supporterPlayed:
+            return None
+        cost = self._pd_cost()
+        if any(v.id in self.LINE and _can_pay(cost, v.energy) for v in ctx.me.inplay()):
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId == self.CRISPIN:
+                return [i]
+        return None
+
+    def rule_ogre_stamp(self, ctx):
+        """HUMAN COUNTER-PLAY #5: Unfair Stamp lands hardest when their HAND is rich --
+        the option's very presence proves the legality window (one of ours was Knocked
+        Out last turn), so the only judgement left is theirs to lose: 4+ cards shuffled
+        away for a 2-card hand while their board still wants Tera Orbs and energy."""
+        if not self._ogre(ctx):
+            return None
+        if (ctx.opp.hand_count or 0) < 4:
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId == 1080:
+                return [i]
+        return None
+
+    def rule_ogre_trap(self, ctx):
+        """HUMAN COUNTER-PLAY #4: the Boss that KILLS nothing but costs them a turn.
+        When no knockout exists for us this turn, their Active is charged, and a fresh
+        0-energy Ogerpon sits on their bench, gusting the empty one forward makes them
+        choose between a wasted attack turn (Teal Dance one energy at a time) and
+        burning N's Plan. Budgeted: only while a second Boss remains in OUR deck-or-hand
+        economy is not tracked, so the rule simply never fires once lethal_boss or the
+        gust-for-kill paths could use the copy -- they run earlier in the ladder."""
+        if not self._ogre(ctx) or ctx.state.supporterPlayed:
+            return None
+        oa = ctx.opp.active
+        if oa is None or oa.energy_count < 2:
+            return None
+        # no kill for us this turn (dive nor blast reaches anything)
+        dive = self._pd_damage()
+        a = ctx.me.active
+        can_kill = a is not None and self._can_dive(a) \
+            and any(0 < (v.hp or 0) <= dive for v in ctx.opp.inplay())
+        if can_kill:
+            return None
+        empty_bench = [v for v in ctx.opp.bench if v.energy_count == 0]
+        if not empty_bench:
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and self._in_bucket(c, _GUST):
+                self._trap_gust = True     # the gust SELECT must take the EMPTY body
+                return [i]
+        return None
+
+    def rule_ogre_hammer(self, ctx):
+        """Crushing Hammer at every energy the coin allows: each {G} on their Active is
+        30 more Myriad Leaf Shower, the third enables Jumbo Ice Cream's 80 heal, and
+        N's Plan pulls bench energy forward -- bench energy is not safe either."""
+        if not self._ogre(ctx):
+            return None
+        if not any(v.energy_count >= 1 for v in ctx.opp.inplay()):
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId == self.HAMMER:
+                return [i]
+        return None
+
+    def rule_ogre_fan(self, ctx):
+        """Handheld Fan on the line: every attack they land on the wearer moves one of
+        THEIR energies back to their bench -- -30 off the next Leaf Shower and pressure
+        off the Ice Cream threshold. The target select routes through decide_target's
+        my-side scoring, which already prefers the best attacker."""
+        if not self._ogre(ctx):
+            return None
+        if not any(v.id in self.LINE for v in ctx.me.inplay()):
+            return None
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c is not None and c.cardId == self.FAN:
+                return [i]
+        return None
+
+    def _ogre_bench_ban(self, ctx, cid, taken=()):
+        """The bench diet's HARD half: bodies that must not reach the board at all.
+
+        Their farm needs six 1-prize kills or three 2-prize ones, and round 1 measured
+        the soft (score-only) diet failing: Duskull@bench deaths ROSE because ranking
+        cannot decline. Fez/Meowth are 2 prizes parked for nothing; Duskull without its
+        evolution in hand is a multi-turn gust target. A genuinely thin board overrides
+        everything -- a lost promotion is the only thing worse than a fed prize."""
+        board = len(ctx.me.inplay()) + len(taken)
+        if ctx.sel.context == SelectContext.SETUP_BENCH_POKEMON:
+            board += 1                       # the committed Active is not in obs yet
+        # HUMAN COUNTER-PLAY #2/#8: once both Boss's Orders are in their discard, their
+        # deck has NO way to touch our bench -- every diet rule below is a tax with no
+        # collector. Fez comes down for its draw, Duskull comes down freely.
+        try:
+            if self._ogre_intel(ctx)["boss_left"] == 0:
+                return False
+        except Exception:                          # noqa: BLE001
+            pass
+        # A 2-prize support ex is NEVER worth benching into the farm -- the pokehubguide
+        # list carries only six 1-prize bodies, so their six prizes are 4 kills once a
+        # Fez joins the buffet (measured: game over on our turn 7.0). Desperation floor
+        # applies only to 1-prize bodies.
+        if cid in (self.FEZ, self.MEOWTH):
+            return True
+        if board <= 1:
+            return False
+        if cid == self.DUSKULL:
+            # Duskull deaths ran 0.9/game: benched early it is farmed for turns before
+            # any spike exists. It comes down only when the spike can DEPLOY at once --
+            # Dusclops in hand, or Rare Candy + Dusknoir in hand (skip the Stage 1) --
+            # AND in a Boss-safe window: both their Boss's Orders counted out, or their
+            # hand freshly reset to 3 or fewer (a held Boss is then unlikely). The
+            # mandatory one-turn pre-evolution exposure is exactly what their two
+            # gusts farm; choosing WHEN to expose is the whole counter-play.
+            hand_ids = [getattr(c, "id", None) for c in (ctx.me_ps.hand or [])]
+            ready = self.DUSCLOPS in hand_ids \
+                or (1079 in hand_ids and self.DUSKNOIR in hand_ids)
+            try:
+                _it2 = self._ogre_intel(ctx)
+                safe = _it2["boss_left"] == 0 or (ctx.opp.hand_count or 9) <= 3
+            except Exception:                      # noqa: BLE001
+                safe = True
+            second = self.DUSKULL in taken \
+                or any(v.id in (self.DUSKULL, self.DUSCLOPS, self.DUSKNOIR)
+                       for v in ctx.me.inplay())
+            return not (ready and safe) or second
+        return False
+
+    def _is_spare_ex_sub(self, ctx, cid, taken):
+        # Flag-only fallback when the opponent is not visible yet (setup): a DEDICATED
+        # ogerpon engine diets from the first bench too -- round 2 measured Duskull@bench
+        # deaths staying at 318/400 because the setup bench was exempt.
+        live = self._ogre(ctx) or not any(True for _ in ctx.opp.inplay())
+        if self._d_ogre and live and self._ogre_bench_ban(ctx, cid, taken):
+            return True
+        return super()._is_spare_ex_sub(ctx, cid, taken)
+
+    def decide_bench(self, ctx):
+        """MAIN-menu benching from hand, with the same hard diet as the sub-select."""
+        if not (self._d_ogre and self._ogre(ctx)):
+            return super().decide_bench(ctx)
+        if len(ctx.me.bench) >= self.bench_target:
+            return None
+        cands = []
+        for i in ctx.plays:
+            card = ctx.hand_card(ctx.sel.option[i])
+            if card and card.cardType == CardType.POKEMON and card.basic:
+                if self._ogre_bench_ban(ctx, card.cardId):
+                    continue
+                if _SPARE_EX_GUARD and self._is_spare_ex(ctx, card):
+                    continue
+                cands.append((self._bench_score(card.cardId), i))
+        if not cands:
+            return None
+        return [max(cands)[1]]
+
+    def choose_sub(self, ctx):
+        """Two sub-selects the base routes to decide_acquire's card-need ranking, which
+        is the wrong question for both (round-4 trace: Crispin's energy landed on a
+        benched Meowth ex, because a big attacker out-needs a Dreepy):
+
+        ATTACH_TO   -- WHICH basic energies to take (Crispin's deck pick). Take the two
+                       dive types; {R} and {P} are 'different types' so both are legal.
+        ATTACH_FROM -- WHICH of our bodies receives. The pair math, not the need score:
+                       a line body one type short of {R}{P} first, Dragapult ex above
+                       Drakloak above Dreepy, non-line bodies never."""
+        if self._d_ogre and self._ogre(ctx):
+            c = ctx.sel.context
+            opt = ctx.sel.option
+            if c == SelectContext.ATTACH_TO:
+                fire, psy, rest = [], [], []
+                for i in range(len(opt)):
+                    cid = self._opt_card_id(ctx, opt[i])
+                    card = _CARDS.get(cid)
+                    et = card.energyType if card is not None else None
+                    (fire if et == 2 else psy if et == 5 else rest).append(i)
+                if fire or psy:
+                    return (fire[:1] + psy[:1]) or fire[:2] or psy[:2]
+            if c == SelectContext.ATTACH_FROM:
+                cost = self._pd_cost()
+
+                def ak(i):
+                    pk = ctx.field_pk(opt[i])
+                    if pk is None:
+                        return -1
+                    v = PokemonView(pk, self.roles.get(pk.id))
+                    if v.id not in self.LINE:
+                        return 0
+                    have_r = 2 in v.energy
+                    have_p = 5 in v.energy
+                    one_short = have_r != have_p and not _can_pay(cost, v.energy)
+                    stage = {self.PULT: 3, self.DRAKLOAK: 2, self.DREEPY: 1}[v.id]
+                    return (100 if one_short else 10) + stage
+                return sorted(range(len(opt)), key=ak, reverse=True)
+        return super().choose_sub(ctx)
+
+    def decide_discard(self, ctx):
+        """Discard costs (Ultra Ball's 2) keep their base ranking except for the cards
+        this matchup cannot replace: the round-4 trace paid an Ultra Ball with the
+        {R}{P} PAIR -- the exact two cards the game is about -- to fetch a Dreepy.
+        Basic {R}/{P} (6 in 60), Crispin, and the Dragapult line go to the back."""
+        base = super().decide_discard(ctx)
+        if not (self._d_ogre and self._ogre(ctx)) or not base:
+            return base
+        precious = {2, 5, self.CRISPIN, self.PULT, self.DRAKLOAK}
+
+        def is_precious(i):
+            return self._opt_card_id(ctx, ctx.sel.option[i]) in precious
+        return [i for i in base if not is_precious(i)] + [i for i in base if is_precious(i)]
+
+    def decide_ability(self, ctx):
+        """In ogre mode the prize-conceding abilities belong to rule_ogre_close alone:
+        the base 'clearly beneficial' test fires Cursed Blast eagerly, which is how the
+        engine feeds cheap prizes. Recon Directive still flows through the base."""
+        r = super().decide_ability(ctx)
+        if r and self._d_ogre and self._ogre(ctx):
+            pk = ctx.field_pk(ctx.sel.option[r[0]])
+            if pk is not None and pk.id in (self.DUSCLOPS, self.DUSKNOIR, self.MUNKIDORI):
+                return None
+        return r
+
+    # ----- 1. promotion: the -20..-25pt arrow ------------------------------ #
+    def rule_front_the_dive(self, ctx):
+        """Put the Dragapult ex that can already pay {R}{P} in FRONT, even though the
+        current Active could throw a chip attack instead.
+
+        `FocusL2.rule_promote_focus` is the same idea gated on `not ctx.attacks`, which is
+        exactly the case the forensics say never happens: the Active can nearly always do
+        SOMETHING, so the armed Dragapult never comes up. The trade this rule makes is one
+        chip attack (Jet Headbutt 70 / Itchy Pollen 20) for a 200 + six-counter turn, so it
+        only fires when the chip attack is not itself decisive.
+        """
+        if ctx.state.retreated:
+            return None
+        armed = next((v for v in ctx.me.bench if v.id == self.PULT and self._can_dive(v)), None)
+        if armed is None:
+            return None
+        a = ctx.me.active
+        if a is not None and self._can_dive(a):
+            return None                              # already the right body in front
+        # never trade away a KO that ends the game, nor a KO the Active can take right now
+        if ctx.attacks:
+            prize = getattr(ctx, "prize", None)
+            if prize is not None and prize.can_close and ctx.ko_targets:
+                return None
+            oa = ctx.opp.active
+            if oa is not None and a is not None and a.best_ready_dmg >= oa.hp:
+                return None
+        # a free switch first: retreating pays its cost by DISCARDING attached energy, and
+        # this deck's energy is the scarce resource (ogerpon strips 1.58 per game)
+        for i in ctx.plays:
+            c = ctx.hand_card(ctx.sel.option[i])
+            if c and self._in_bucket(c, _SWITCH_CARDS):
+                return [i]
+        if ctx.retreat_idx is None:
+            return None
+        # do not strand the line's own energy: an Active that is itself a charging line body
+        # is one evolve away from being the attacker, so it is worth more where it stands
+        if a is not None and a.id in self.LINE and a.energy_count:
+            return None
+        return [ctx.retreat_idx]
+
+    def decide_active(self, ctx, mode="setup"):
+        """KO-replacement and setup promotion: a body that can dive outranks everything.
+
+        In ogre mode the promotion IS the prize race. Their six prizes are farmed off
+        whatever we put in front, so the order is: armed Dragapult (dive now), then the
+        cheapest EMPTY body (Budew first: its free Itchy Pollen chips 10 and locks their
+        ~23 Items for a turn while it dies), and the charging bodies / the Drakloak draw
+        engine / the unarmed 2-prize ex stay OFF the front. Promoting a body that
+        carries {R}/{P} buries the fuel with it -- empty sacrifices only."""
+        # No mode gate: choose_sub calls this with mode="setup" for EVERY TO_ACTIVE
+        # (round-4 trace: the sacrifice ordering never ran and an unarmed Dragapult ex
+        # was promoted into Myriad Leaf Shower). At true setup the opponent's board is
+        # empty, so _ogre() itself is the setup gate.
+        if self._d_ogre and self._ogre(ctx):
+            opt = ctx.sel.option
+            intel = self._ogre_intel(ctx)
+            oa = ctx.opp.active
+            opp_dmg = oa.best_ready_dmg if oa is not None else 0
+            my_left = len(ctx.me_ps.prize or [])
+
+            def okey(i):
+                pk = ctx.field_pk(opt[i])
+                if pk is None:
+                    return (99, 0)
+                v = PokemonView(pk, self.roles.get(pk.id))
+                if self._can_dive(v):
+                    return (0, -v.energy_count)      # armed Dragapult: dive next turn
+                # The Jet Headbutt bridge: one colorless pays for 70, so a HALF-charged
+                # Dragapult in front chips a fresh 210 into blast/dive range while the
+                # second energy assembles -- but only while their ramp cannot answer:
+                # Myriad Leaf Shower needs ~9 energies across both Actives to one-shot
+                # 320, so the bridge closes once their board carries 5+.
+                # Gate: a one-shot on 320 needs 30+30x(their E + ours) >= 320, i.e.
+                # ~8 of theirs against a 2-energy bridge -- at <=6 in play the worst
+                # hit is 270 and the bridge survives to chip at least twice.
+                # #7 (Briar): at exactly 2 prizes remaining their Tera KO takes THREE --
+                # while their Briar is unspent, a 2-prize body does not volunteer.
+                if v.id == self.PULT and v.energy_count >= 1 \
+                        and ctx.opp.energy_in_play <= 6 \
+                        and not (my_left == 2 and intel["briar_left"] > 0):
+                    return (1, -v.energy_count)
+                # #9: among equal-prize sacrifices, prefer the one their CURRENT ready
+                # damage cannot kill -- a surviving sacrifice is a whole free turn, or
+                # forces them to spend an attach/N's Plan they wanted elsewhere.
+                _survives = 0 if (v.hp or 0) > opp_dmg else 1
+                if v.id == self.BUDEW:
+                    return (2, _survives)            # lock + 10 chip, dies for 1 prize
+                if v.id == self.DREEPY and not v.energy_count:
+                    return (3, _survives)
+                if v.id == self.MUNKIDORI and self.DARK_E not in v.energy:
+                    return (4, _survives)
+                # Dusclops BEFORE Duskull: 90 HP survives their early 60-70s, and if it
+                # is doomed anyway the doomed-blast fires its 50 on the way out. A raw
+                # Duskull in front is unfired ammunition handed over for nothing.
+                if v.id == self.DUSCLOPS:
+                    return (5, _survives)
+                if v.id == self.DUSKULL:
+                    return (6, _survives)
+                if v.id == self.MUNKIDORI:
+                    return (7, 0)                    # {D} attached: the closer, spend late
+                if v.id == self.DREEPY:
+                    return (8, -v.energy_count)      # charging: its energy dies with it
+                if v.id == self.DRAKLOAK:
+                    return (9, -v.energy_count)      # the draw engine
+                if v.id == self.PULT:
+                    return (10, -v.energy_count)     # unarmed ex: 2 free prizes
+                return (11, 0)
+            return sorted(range(len(opt)), key=okey)
+        if not self._d_front:
+            return super().decide_active(ctx, mode)
+        opt = ctx.sel.option
+        base = super().decide_active(ctx, mode)
+        rank = {i: n for n, i in enumerate(base)}
+
+        def key(i):
+            pk = ctx.field_pk(opt[i])
+            v = PokemonView(pk, self.roles.get(pk.id)) if pk is not None else None
+            return (-self._dive_progress(v), rank.get(i, len(opt)))
+        return sorted(range(len(opt)), key=key)
+
+    # ----- 2. energy: the ogerpon-specific arrow --------------------------- #
+    def decide_energy_target(self, ctx):
+        """Attach toward a Phantom Dive, then STOP.
+
+        Two measured facts drive this. (a) The line is the only thing in the deck that
+        converts energy into prizes, and against ogerpon our Active carried a mean of 0.83
+        energies -- we were not paying for our own attack. (b) Myriad Leaf Shower does
+        30 more for each Energy on BOTH Actives, so the third energy on our Active is a
+        gift of 30 damage to the opponent and buys us nothing: Phantom Dive costs two.
+        """
+        if not self._d_charge or ctx.state.energyAttached:
+            return super().decide_energy_target(ctx)
+        atts = self._energy_attach_opts(ctx)
+        if not atts:
+            return super().decide_energy_target(ctx)
+        opt = ctx.sel.option
+        ogre = self._d_ogre and self._ogre(ctx)
+
+        def sc(i):
+            pk = ctx.field_pk(opt[i])
+            if pk is None:
+                return (-1, 0)
+            v = PokemonView(pk, self.roles.get(pk.id))
+            c = ctx.hand_card(opt[i])
+            et = c.energyType if c is not None else None
+            # {D} pays nothing toward Phantom Dive; its whole job is switching on
+            # Adrena-Brain. On a line body it is a wasted slot the charge scorer
+            # below would otherwise credit.
+            if ogre and et == self.DARK_E:
+                # ... and only while Munkidori sits on the BENCH: the round-4 trace
+                # attached {D} to an ACTIVE Munkidori and paid it straight back out as
+                # the retreat cost two decisions later. Adrena-Brain works from the
+                # bench, which Boss aside nothing of theirs can reach.
+                o = opt[i]
+                tgt_area = o.inPlayArea if o.inPlayArea is not None else o.area
+                if v.id == self.MUNKIDORI and self.DARK_E not in v.energy \
+                        and tgt_area != AreaType.ACTIVE:
+                    return (50, 0)
+                return (0, -v.energy_count)
+            if v.id not in self.LINE:
+                return (0, -v.energy_count)
+            # Anti-Boss split: a 70 HP Dreepy carrying BOTH dive energies is their best
+            # play in the game -- Boss's Orders erases body and fuel together. #10 makes
+            # the split CONDITIONAL, the way a human plays it: it only buys anything
+            # while they still hold the removal (2+ hammers or a Boss); with the threat
+            # counted out of their deck, focusing one body is strictly faster.
+            if ogre and not self._d_rush and v.id == self.DREEPY and v.energy_count >= 1:
+                _it = self._ogre_intel(ctx)
+                if _it["hammer_left"] >= 2 and _it["boss_left"] >= 1:
+                    return (0, -v.energy_count)
+            if self._d_cap and v.energy_count >= self._d_cap:
+                return (0, -v.energy_count)          # full: another one only feeds Myriad
+            before = self._dive_progress(v)
+            after = self._dive_progress(v, et)
+            # a body that BECOMES payable is worth more than one that merely inches closer,
+            # and Dragapult ex (which owns the attack) more than the Drakloak under it.
+            # The flat bonus is CONDITIONAL on progress: unconditioned, it scored a second
+            # {P} onto a {P}-holding Dragapult positive, and the round-4 trace died with
+            # the diver stuck on {P}{P} while the {R} went to a Dreepy.
+            d = after - before
+            if d <= 0:
+                return (0, -v.energy_count)
+            return (10 * d + (3 if v.id == self.PULT else 1), -v.energy_count)
+        best = max(atts, key=sc)
+        if sc(best)[0] > 0:
+            return [best]
+        if ogre:
+            # No PROGRESS target -- but with 8 attack energies and games this short
+            # (their farm closes by our turn ~7), holding is worse than banking: put it
+            # on any line body below the cap. Only when even that does not exist is the
+            # attach declined (the old hold, kept for the Munkidori-class waste).
+            for i in atts:
+                pk = ctx.field_pk(ctx.sel.option[i])
+                if pk is None:
+                    continue
+                v = PokemonView(pk, self.roles.get(pk.id))
+                if v.id in self.LINE and (not self._d_cap
+                                          or v.energy_count < self._d_cap):
+                    return [i]
+            return None
+        return super().decide_energy_target(ctx)
+
+    # ----- 3. search: the +6.55/+10.62 rule, engine-side -------------------- #
+    def decide_acquire(self, ctx):
+        if not self._d_search:
+            return super().decide_acquire(ctx)
+        order = super().decide_acquire(ctx)
+        opt = ctx.sel.option
+        my = [v.id for v in ctx.me.inplay()]
+        hand = [c.id for c in (ctx.me_ps.hand or [])]
+        turn = ctx.state.turn or 0
+        want = None
+        want_e = False
+        if self._d_ogre and self._ogre(ctx):
+            # No turn gate and no Duskull step: against ogerpon the game IS finishing the
+            # line before their farm takes six, and a benched Duskull is the farm's
+            # favourite meal (1.14 deaths/game). Dragapult ex itself joins the chain --
+            # Ultra Ball can fetch it, and a line with no Pult in sight is the loss.
+            if my.count(self.DREEPY) + my.count(self.DRAKLOAK) < self.LINE_TARGET:
+                want = self.DREEPY
+            elif self.DRAKLOAK not in my and self.PULT not in my \
+                    and self.DRAKLOAK not in hand:
+                want = self.DRAKLOAK
+            elif self.PULT not in my and self.PULT not in hand:
+                want = self.PULT
+            elif not any(x in my for x in (self.DUSKULL, self.DUSCLOPS, self.DUSKNOIR)) \
+                    and self.DUSKULL not in hand:
+                want = self.DUSKULL         # the blast line: 2 prizes per 1, on demand
+            elif my.count(self.DREEPY) < 3 and self.DREEPY not in hand:
+                want = self.DREEPY          # sacrifice depth: each Dreepy is a turn
+            # line assembled but unpaid: a search that can see basic {R}/{P} (Night
+            # Stretcher's discard menu) should take the fuel over another body.
+            if want is None and not any(
+                    v.id in self.LINE and _can_pay(self._pd_cost(), v.energy)
+                    for v in ctx.me.inplay()):
+                want_e = True
+        elif turn <= self.SETUP_TURNS:
+            if my.count(self.DREEPY) + my.count(self.DRAKLOAK) < self.LINE_TARGET:
+                want = self.DREEPY
+            elif self.DRAKLOAK not in my and self.PULT not in my:
+                want = self.DRAKLOAK
+            elif self.DUSKULL not in my:
+                want = self.DUSKULL
+        rank = {i: n for n, i in enumerate(order)}
+
+        _candy = 1079 in hand                    # Rare Candy: Basic -> Stage 2 directly
+
+        def key(i):
+            cid = self._opt_card_id(ctx, opt[i])
+            pre = self.PREREQ.get(cid)
+            # dead in hand: nothing on the board (or in hand) to evolve it from
+            bad = 1 if (pre is not None and pre not in my and pre not in hand) else 0
+            if bad and _candy:
+                base = self.PREREQ.get(pre)
+                if base is not None and (base in my or base in hand):
+                    bad = 0                      # Candy skips the missing Stage 1
+            good = -1 if ((want is not None and cid == want)
+                          or (want_e and cid in (self.FIRE_E, self.PSY_E))) else 0
+            return (bad, good, rank.get(i, len(opt)))
+        return sorted(range(len(opt)), key=key)
+
+    # ----- 4. bench: two line bodies before anything else ------------------ #
+    def _bench_score(self, cid):
+        if not self._d_bench:
+            return super()._bench_score(cid)
+        # `_bench_score` has no ctx, so the board count is read off the live perception the
+        # policy keeps for the current decision (set in act()); absent it, fall through.
+        ctx = getattr(self, "_ctx", None)
+        if ctx is None:
+            return super()._bench_score(cid)
+        n = self._line_bodies(ctx)
+        if self._d_ogre and self._ogre(ctx):
+            # The bench diet: every non-line body we park is a 1-prize meal for their
+            # Boss's Orders farm (Duskull 1.14 deaths/game, 0.74 off the bench). Dreepy
+            # is the engine, Budew is a planned sacrifice that locks Items while it
+            # waits, Munkidori is the closer. Duskull only with its evolution IN HAND
+            # (one-turn exposure), and the spare 2-prize exes never.
+            hand_ids = [c.id for c in (ctx.me_ps.hand or [])]
+            if cid == self.DREEPY:
+                return 10000 if n < self.LINE_TARGET else 500
+            if cid == self.BUDEW:
+                return 600
+            if cid == self.DUSKULL:
+                have = any(v.id in (self.DUSKULL, self.DUSCLOPS, self.DUSKNOIR)
+                           for v in ctx.me.inplay())
+                if not have:
+                    return 450               # first copy = ammunition, bench it
+                return 300 if (self.DUSCLOPS in hand_ids
+                               or self.DUSKNOIR in hand_ids) else 20
+            if cid == self.MUNKIDORI:
+                return 350
+            if cid in (self.MEOWTH, self.FEZ):
+                return 10
+        if cid == self.DREEPY:
+            return 10000 if n < self.LINE_TARGET else 400
+        if cid == self.DUSKULL:
+            return 900 if n >= self.LINE_TARGET else 300
+        return super()._bench_score(cid)
+
 
 _PERDECK = {
+    "dusknoir": DuskNoirL2,
     "mega_lucario_tr": MegaLucarioTRL2,
     "alakazam": AlakazamL2, "doublade": DoubladeL2, "hydrapple": HydrappleL2,
     "rockets_mewtwo": RocketsMewtwoL2, "mamoswine": MamoswineL2,
-    "marnie_grimmsnarl": MarnieGrimmsnarlL2, "mega_lucario": MegaLucarioL2, "cynthia_garchomp": CynthiaGarchompL2, "mega_feraligatr": MegaFeraligatrL2, "omatsuri": OmatsuriL2, "ns_zoroark": ZoroarkL2, "ethan_hooh": EthanHoohL2, "manectric": ManectricL2, "mega_venusaur": MegaVenusaurL2, "mega_gardevoir": MegaGardevoirL2, "mega_diancie": MegaDiancieL2, "black_kyurem": BlackKyuremL2, "mega_latias": MegaLatiasL2, "mega_zygarde": MegaZygardeL2, "cubchoo_control": CubchooL2, "slowking_combo": SlowkingComboL2, "slowking_hybrid": HybridSlowkingL2, "config": ConfigL2,
+    "marnie_grimmsnarl": MarnieGrimmsnarlL2, "mega_lucario": MegaLucarioL2, "cynthia_garchomp": CynthiaGarchompL2, "mega_feraligatr": MegaFeraligatrL2, "omatsuri": OmatsuriL2, "ns_zoroark": ZoroarkL2, "ethan_hooh": EthanHoohL2, "manectric": ManectricL2, "mega_venusaur": MegaVenusaurL2, "mega_gardevoir": MegaGardevoirL2, "mega_diancie": MegaDiancieL2, "black_kyurem": BlackKyuremL2, "mega_latias": MegaLatiasL2, "mega_zygarde": MegaZygardeL2, "cubchoo_control": CubchooL2, "slowking_combo": SlowkingComboL2, "slowking_hybrid": HybridSlowkingL2, "slowking_live": SlowkingLiveL2, "config": ConfigL2,
     "metagross": MetagrossL2, "dudunsparce_box": DudunsparceBoxL2,
     "briar": BriarL2, "waitress": WaitressL2, "klinklang": KlinklangL2,
 }

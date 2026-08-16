@@ -17,6 +17,7 @@ Run:
 """
 
 import json
+import os
 import csv
 import random
 import re
@@ -27,13 +28,43 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, "cg-lib")
+# The seeded engine build (a superset of the stock exports) makes battles
+# deterministic per seed, which is what the undo feature replays against.
+# Set BEFORE cg.game is imported, unless the caller already chose a lib.
+_SEEDED_SO = os.path.join("data", "kaggle_engine_ext", "libcg_seeded.so")
+if "CG_LIB" not in os.environ and os.path.exists(_SEEDED_SO):
+    os.environ["CG_LIB"] = os.path.abspath(_SEEDED_SO)
 from cg.game import battle_start, battle_select, battle_finish  # noqa: E402
+from cg.game import _get_battle_data  # noqa: E402  (obs builder, used by seeded start)
+from cg.sim import Battle, StartData, lib as _cglib  # noqa: E402
+import ctypes  # noqa: E402
+
+
+def _battle_start_seeded(deck0, deck1, seed):
+    """BattleStartSeeded via the seeded engine build; None if unavailable."""
+    if not hasattr(_cglib, "BattleStartSeeded"):
+        return None
+    if not getattr(_battle_start_seeded, "_init", False):
+        _cglib.BattleStartSeeded.restype = StartData
+        _cglib.BattleStartSeeded.argtypes = [
+            ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_int]
+        _battle_start_seeded._init = True
+    cards = list(deck0) + list(deck1)
+    arg = (ctypes.c_int * len(cards))(*cards)
+    # deviceRand=0: EVERY in-game random event (shuffles, coin flips, mulligan
+    # draws) comes from the seeded rng, so replaying the recorded selects against
+    # the same seed reproduces the game exactly -- the property undo needs.
+    sd = _cglib.BattleStartSeeded(arg, seed, 0)
+    Battle.battle_ptr = sd.battlePtr
+    if not Battle.battle_ptr:
+        return None
+    return _get_battle_data()
 from cg.api import all_card_data, all_attack, OptionType, SelectContext  # noqa: E402
 from battle_log import save_battle, deck_name, deck_path, load_agent  # noqa: E402
 import library  # noqa: E402
 from library import load_config  # noqa: E402
 
-HOST, PORT = "0.0.0.0", 8000
+HOST, PORT = "0.0.0.0", int(os.environ.get("PLAY_PORT", "8000") or 8000)
 HUMAN = 0  # human plays this player index; AI plays the other
 
 # The human deck, AI agent and AI deck are chosen in config.json (edited from
@@ -105,7 +136,10 @@ def _board_card_image(cid):
             out = ("image/png", buf.getvalue())
         except Exception as e:
             print("[board-jp] resize failed for", cid, ":", repr(e), "-- serving full size")
-    _board_img_cache[cid] = out
+    # Cache SUCCESSES only: a transient miss (PDF lock contention, first-hit race)
+    # cached as None would leave that card's face broken until the server restarts.
+    if out is not None:
+        _board_img_cache[cid] = out
     return out
 _UA = "Mozilla/5.0 (X11; Linux x86_64) play_server proxy"
 _asset_cache = {}          # path -> (content_type, bytes); heroz assets are static
@@ -491,6 +525,8 @@ class Game:
         self.human_deck = None
         self.ai_deck = None
         self.saved = False
+        self.seed = None           # per-battle seed (None = stock lib, undo off)
+        self.history = []          # [("h"|"a", indices), ...] every select this battle
         self._apply_config()
 
     def _apply_config(self):
@@ -537,11 +573,22 @@ class Game:
         decks[1 - HUMAN] = self.ai_deck
         return decks[0], decks[1]
 
+    def _begin(self):
+        """Start a battle: seeded (deterministic, undo-capable) when the seeded
+        engine build is present, stock otherwise."""
+        self.saved = False
+        self.history = []
+        self.seed = random.randrange(1, 2**31)
+        obs = _battle_start_seeded(*self._battle_decks(), self.seed)
+        if obs is None:
+            self.seed = None                     # undo unavailable on the stock lib
+            obs, _ = battle_start(*self._battle_decks())
+        self.obs = obs
+
     def start(self):
         self._apply_config()  # re-read selection so config changes apply
         self._load_decks()
-        self.saved = False
-        self.obs, _ = battle_start(*self._battle_decks())
+        self._begin()
         self._advance_ai()
 
     def reset(self):
@@ -551,9 +598,34 @@ class Game:
             pass
         self._apply_config()  # re-read selection + deck files so changes apply on Restart
         self._load_decks()
-        self.saved = False
-        self.obs, _ = battle_start(*self._battle_decks())
+        self._begin()
         self._advance_ai()
+
+    def undo(self):
+        """Rewind to just before the human's LAST confirmed action, by replaying
+        the recorded selects of this battle against the same seed."""
+        if self.seed is None:
+            raise ValueError("取り消しはこの環境では使えません（シード付きエンジン未検出）")
+        last_h = None
+        for i in range(len(self.history) - 1, -1, -1):
+            if self.history[i][0] == "h":
+                last_h = i
+                break
+        if last_h is None:
+            raise ValueError("取り消せる手がまだありません")
+        prefix = self.history[:last_h]
+        try:
+            battle_finish()
+        except Exception:
+            pass
+        obs = _battle_start_seeded(*self._battle_decks(), self.seed)
+        if obs is None:
+            raise ValueError("リプレイの再開始に失敗しました")
+        for _, sel in prefix:
+            obs = battle_select(list(sel))
+        self.obs = obs
+        self.history = prefix
+        self.saved = False
 
     def _advance_ai(self):
         """Let the AI play until it is the human's turn or the game ends."""
@@ -565,6 +637,7 @@ class Game:
             if st["yourIndex"] == HUMAN:
                 return
             action = self.ai_agent(self.obs)
+            self.history.append(("a", list(action)))
             self.obs = battle_select(action)
 
     def _save_log(self):
@@ -592,6 +665,7 @@ class Game:
             raise ValueError("Duplicate selection.")
         if any(not (0 <= i < len(sel["option"])) for i in indices):
             raise ValueError("Option index out of range.")
+        self.history.append(("h", list(indices)))
         self.obs = battle_select(indices)
         self._advance_ai()
 
@@ -756,6 +830,13 @@ class Handler(BaseHTTPRequestHandler):
             with GAME.lock:
                 GAME.reset()
                 self._send(200, json.dumps(GAME.state()))
+        elif self.path == "/api/undo":
+            with GAME.lock:
+                try:
+                    GAME.undo()
+                    self._send(200, json.dumps(GAME.state()))
+                except Exception as e:
+                    self._send(400, json.dumps({"error": str(e)}))
         elif self.path == "/api/config":
             try:
                 stored = library.save_config(body)
@@ -867,6 +948,7 @@ PAGE = r"""<!DOCTYPE html>
       <span id="status"></span>
       <span id="hint"></span>
       <button id="confirm" onclick="confirm_()" disabled>決定</button>
+      <button class="ghost" onclick="undo_()" title="直前の自分の決定の直前まで巻き戻します">1手戻す</button>
       <button class="ghost" onclick="reset()">リスタート</button>
       <a class="mglink" href="/manage">⚙ 管理</a>
     </div>
@@ -959,11 +1041,23 @@ async function confirm_(){
   let r=await fetch('/api/select',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({indices:selected})});
   let j=await r.json();
-  if(j.error){ alert(j.error); return; }
+  if(j.error){
+    alert(j.error);
+    // Resync: a stale page (e.g. after a server restart) holds a menu the server
+    // no longer has -- refetch the live state so the next click is valid.
+    await load(); reloadBoard();
+    return;
+  }
   S=j; render(); reloadBoard();
 }
 async function reset(){
   S=await (await fetch('/api/reset',{method:'POST'})).json(); render(); reloadBoard();
+}
+async function undo_(){
+  let r=await fetch('/api/undo',{method:'POST'});
+  let j=await r.json();
+  if(j.error){ alert(j.error); await load(); reloadBoard(); return; }
+  S=j; render(); reloadBoard();
 }
 load(); fitBoard(); setTimeout(fitBoard, 200); setTimeout(revealBoard, 2000);
 </script>

@@ -460,6 +460,11 @@ def main():
     ap.add_argument("--workers", type=int,
                     default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--max-steps", type=int, default=4000)
+    ap.add_argument("--pair-with", type=str, default="",
+                    help="comma-separated decks; keep ONLY matchups involving one of them. "
+                         "Adding a deck to the fleet needs its 64 new pairs, not all 2,080 -- "
+                         "the rest are already in the pool and regenerating them just dilutes "
+                         "the new deck's share.")
     ap.add_argument("--keep-blob", action="store_true",
                     help="keep obs['search_begin_input'] -- REQUIRED for build_rerank --pfmt "
                          "v41, which decodes the engine's hidden effect state out of it. Costs "
@@ -503,6 +508,12 @@ def main():
     pairs = list(itertools.combinations(decks, 2))
     if args.mirror:
         pairs += [(d, d) for d in decks]
+    if args.pair_with:
+        focus = {x.strip() for x in args.pair_with.split(",") if x.strip()}
+        missing = focus - set(decks)
+        if missing:
+            raise SystemExit("--pair-with names unknown decks: %s" % sorted(missing))
+        pairs = [p for p in pairs if p[0] in focus or p[1] in focus]
     tasks = [(a, b, args.games, outdir, args.lean, args.max_steps, rel, args.explore,
               args.perturb, args.perturb_frac, args.keep_blob) for a, b in pairs]
 

@@ -23,7 +23,7 @@ from collections import Counter
 
 from battle_log import DECKS_DIR, AGENTS_DIR, deck_path
 
-CONFIG_PATH = "config.json"
+CONFIG_PATH = os.environ.get("PLAY_CONFIG", "config.json")
 SUBMISSIONS_DIR = "submissions"
 COMPETITION = "pokemon-tcg-ai-battle"  # Kaggle competition slug for submission
 CARD_DATA = os.path.join("data", "JP_Card_Data.csv")  # card catalog (Japanese)

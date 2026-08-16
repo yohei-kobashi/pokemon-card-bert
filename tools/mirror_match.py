@@ -138,7 +138,12 @@ class QwenScorer:
             tk_new = AutoTokenizer.from_pretrained(adapter)
             base_tk = getattr(tok, "tokenizer", tok)
             if len(tk_new) != len(base_tk):
-                model.resize_token_embeddings(len(tk_new))
+                # mean_resizing=False: the default initialises the new rows from a Cholesky of
+                # the embedding covariance, which allocates a large temporary AND needs cuSOLVER
+                # -- and every one of those rows is overwritten by domain_embeddings.pt four
+                # lines below. It cost two of three round-5 gate shards, which died here with
+                # CUDA OOM and CUSOLVER_STATUS_INTERNAL_ERROR while three scorers shared one GPU.
+                model.resize_token_embeddings(len(tk_new), mean_resizing=False)
                 blob = _t.load(emb, map_location="cpu")
                 n_base, rows = blob["n_base"], blob["rows"]
                 w = model.get_input_embeddings().weight
@@ -399,7 +404,14 @@ class HFRerankScorer:
         # in the prompt, so right-truncating an overflow deletes the very options being ranked
         # -- that is [[rerank-prompt-truncation-bug]], which cost 99% of decisions their board.
         self.tok.truncation_side = "left"
-        self.model = AutoModelForSequenceClassification.from_pretrained(path).to(self.dev).eval()
+        # fp32 EXPLICITLY. transformers loads a checkpoint in the dtype it was saved in, so a
+        # bf16 checkpoint is scored on the bf16 grid -- which near a logit of 1.0 is 0.0078 wide
+        # while the candidates of a real decision differ by about 0.004. Half the ranking is
+        # quantised into ties before the agent ever sees it, and two arms saved in different
+        # dtypes would not even be quantised alike. Upcasting costs a little speed and no
+        # accuracy; it is never the wrong direction.
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            path, dtype=__import__("torch").float32).to(self.dev).eval()
         # Take the limit from the model, not from a constant: ModernBERT allows 8192 and
         # DeBERTa-v3 only 512, and feeding 768 to the latter is a crash or silent nonsense.
         lim = int(getattr(self.model.config, "max_position_embeddings", 0) or 0)
@@ -472,6 +484,13 @@ def make_no_kind(agent, banned):
     return f
 
 
+# The plan-rule wrapper moved to lm/plan_filter.py when the `def` arm was adopted: tools/ is a
+# research tree and nothing in it can be shipped, so an adopted wrapper living here could not be
+# put in a tarball. Imported rather than reimplemented -- the arm measured by this harness has to
+# BE the arm in the bundle, not a copy of it.
+from lm.plan_filter import make_plan_rule            # noqa: E402  (re-exported for make_agent)
+
+
 def make_defer(lm_agent, ref_agent, kinds):
     """The LM pilots, except at decisions where any candidate is one of `kinds` -- those go to
     engine_v2. Isolates how much of a deficit ONE action kind accounts for (the method that
@@ -488,15 +507,26 @@ def make_defer(lm_agent, ref_agent, kinds):
     return f
 
 
+# Set from --fmt before any agent is built. A module global rather than a parameter because
+# make_agent recurses (defer:/nokind:) and every recursion has to agree on the format.
+_FMT = "prompt"
+
+# The format the last pilot was ACTUALLY built with. "reg" swaps _FMT around its recursive
+# build, so a caller that prints its own --fmt reports the wrong one -- and a prompt-format
+# mismatch is silent at run time and fatal to the score.
+LAST_FMT = None
+
+
 def make_agent(spec, deck_name, deck_ids, profile):
     """The scorer is CACHED across decks. It does not depend on the deck -- only the prompt
     does -- and rebuilding it per deck loaded a fresh 9B for every one of 63 decks without
     freeing the last, which filled the card by deck three and left accelerate offloading
     parameters to the meta device ('Tensor.item() cannot be called on meta tensors'). At 149M
     that was merely wasteful; at 9B it is fatal."""
+    global _FMT, LAST_FMT       # the "reg" branch swaps _FMT around the recursive build
     from lm.agent import make_lm_agent
     from tools import rl_config
-    fmt = dict(rl_config.PROMPT_FMT)
+    fmt = dict(rl_config.DUSK_FMT if _FMT == "dusk" else rl_config.PROMPT_FMT)
     if spec == "engine":
         return make_lm_agent(deck_ids, profile, model=None), None
     if spec.startswith("noisy:"):   # harness self-test: engine_v2 weakened by a known amount
@@ -508,14 +538,66 @@ def make_agent(spec, deck_name, deck_ids, profile):
         lm, sc = make_agent(sub, deck_name, deck_ids, profile)
         return make_defer(lm, make_lm_agent(deck_ids, profile, model=None),
                           kinds.split(",")), sc
+    if spec.startswith(("planrule:", "planfilter:", "planengine:")):
+        # planrule:<rule>[,<rule>]:<modelspec>    the plan decides those menus
+        # planfilter:<rule>[,<rule>]:<modelspec>  the plan narrows them, the model ranks inside
+        # planengine:<rule>[,<rule>]:<modelspec>  engine_v2 decides them -- the matched control
+        head, rs, sub = spec.split(":", 2)
+        lm, sc = make_agent(sub, deck_name, deck_ids, profile)
+        dec = make_lm_agent(deck_ids, profile, model=None) if head == "planengine" else None
+        return make_plan_rule(lm, rs.split(","), strict=(head == "planrule"), decider=dec), sc
+    if spec == "reg" or spec.startswith("reg:"):
+        # "reg" = whatever models/adapters.json says THIS deck plays with; "reg:<deck>" borrows
+        # another deck's entry. Per-deck LoRAs make one spec mean five different adapters, so
+        # the registry has to be consulted per deck rather than per command line.
+        #
+        # It resolves to a CONCRETE spec and recurses, which is not cosmetic: _SCORERS caches by
+        # spec string, and caching "reg" would give deck two the adapter built for deck one --
+        # every per-deck comparison would then be one model measured against itself.
+        from lm import registry as _reg
+        want = spec.split(":", 1)[1] if ":" in spec else deck_name
+        r = _reg.resolve(want)
+        if r["source"] == "default":
+            print("[reg] %s: no entry, using the default %s" % (want, r["target"]), flush=True)
+        else:
+            print("[reg] %s -> %s (fmt %s)" % (want, r["spec"], r["fmt"]), flush=True)
+        prev, _FMT = _FMT, r["fmt"]
+        try:
+            return make_agent(r["spec"], deck_name, deck_ids, profile)
+        finally:
+            _FMT = prev
     if spec.startswith("nokind:"):
         # engine_v2 with ONE action kind ablated, substituted the way the LM substitutes it.
         # Turns "the LM never does X" from a correlation into a causal test: take X away from
         # the pilot that wins, and see whether it stops winning.
         return make_no_kind(make_lm_agent(deck_ids, profile, model=None),
                             spec.split(":", 1)[1]), None
+    if spec.startswith("bundle:"):
+        # The STAGED submission tree, driven through its own main.py -- the artifact that gets
+        # uploaded, not a reconstruction of it. That is the point: the prompt format, the
+        # deferred kinds, the thread count and the embedded lm/ are all baked at build time, so
+        # rebuilding them here would measure something the tarball does not contain.
+        #
+        # Two bundles loaded in one process share the `lm` package that _install_lm writes into
+        # sys.modules. Their embedded sources are identical (same builder, same repo), so the
+        # second install rebinds the first's modules to the same code; each bundle's agent keeps
+        # its own DEFER_KINDS and scorer in its closure. Loading bundles built from DIFFERENT
+        # repo states into one process would not be safe.
+        import importlib.util
+        stage = spec.split(":", 1)[1]
+        s = importlib.util.spec_from_file_location(
+            "kaggle_main_" + os.path.basename(stage.rstrip("/")),
+            os.path.join(stage, "main.py"))
+        mod = importlib.util.module_from_spec(s)
+        s.loader.exec_module(mod)
+        if not str(getattr(mod, "TIER", "")).startswith("reranker"):
+            raise SystemExit("bundle %s loaded as TIER=%r -- it would play as engine_v2"
+                             % (stage, getattr(mod, "TIER", None)))
+        print("[bundle] %s tier=%s defer=%s" % (stage, mod.TIER, mod.DEFER_KINDS), flush=True)
+        return mod.agent, getattr(mod, "_scorer", None)
     if spec in _SCORERS:
         sc = _SCORERS[spec]
+        LAST_FMT = _FMT
         return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
     kind, _, path = spec.partition(":")
     if kind == "qwen":
@@ -525,9 +607,20 @@ def make_agent(spec, deck_name, deck_ids, profile):
     elif kind == "rerank":
         from lm.rerank_scorer import OnnxRerankerScorer
         sc = OnnxRerankerScorer(os.path.join(path, "model.onnx"), path)
+    elif kind == "remote":
+        # remote:<url>[|<adapter>] -- the forward pass happens on another machine's GPU
+        # (tools/score_server.py), everything else is unchanged. The PROMPT is still rendered
+        # here, by this deck's own fmt out of the registry, so an adapter cannot be fed a
+        # rendering it was not trained on. See lm/remote_scorer.py.
+        from lm.remote_scorer import parse_spec
+        sc = parse_spec(path)
+        print("[remote] %s -> %s (adapter %s)" % (deck_name, sc.url, sc.adapter or "server "
+                                                  "default"), flush=True)
     else:
-        raise SystemExit("unknown agent spec %r (engine | qwen:<dir> | hf:<dir> | rerank:<onnx dir>)" % spec)
+        raise SystemExit("unknown agent spec %r (engine | reg[:<deck>] | qwen:<dir> | "
+                         "hf:<dir> | rerank:<onnx dir> | remote:<url>[|<adapter>])" % spec)
     _SCORERS[spec] = sc
+    LAST_FMT = _FMT
     return make_lm_agent(deck_ids, profile, model=sc, deck_name=deck_name, **fmt), sc
 
 
@@ -593,7 +686,16 @@ def main():
                          "tools/build_engine_mirror.py.")
     ap.add_argument("--mirror-so", default="")
     ap.add_argument("--seed", type=int, default=1, help="--mirror: base seed for the shuffles")
+    ap.add_argument("--fmt", default="prompt", choices=("prompt", "dusk"),
+                    help="prompt format the CHALLENGER was trained on. 'dusk' = rl_config."
+                         "DUSK_FMT, instance1's single-deck rendering with no DECK[] segment. "
+                         "Scoring a model under the other one is silent: nothing errors, the "
+                         "win rate just comes back low.")
     args = ap.parse_args()
+    global _FMT
+    _FMT = args.fmt
+    if _FMT != "prompt":
+        print("[fmt] rendering with rl_config.%s_FMT" % _FMT.upper(), flush=True)
 
     eng = None
     if args.mirror:

@@ -12,9 +12,14 @@ comes from, and it is also the entire cost model -- latency scales with
 (candidates x state length), not with candidate length.
 
 TIME BANK: Kaggle gives a 600s CUMULATIVE thinking bank per game and running out is a
-forfeit LOSS. Measured on the real decision distribution at 4 vCPU (the competition
-runtime), a full game projects to ~433s -- inside the bank, but with a p90 of 13.3s and a
-max of 34.7s per decision the tail is not safe. So ``score`` accumulates inference time and
+forfeit LOSS. An earlier version of this note said "4 vCPU (the competition runtime)" and
+projected ~433s per game from it. The 4 is a NOTEBOOK figure -- it comes from
+tools/_legacy_decoder/kaggle_speed_notebook.py, which runs in a Kaggle Notebook (4 vCPU,
+AMD EPYC) and was generalised to the grader that runs submitted agents. The grader gives 2.
+Every speed number derived from that constant is therefore roughly half the real cost, and
+the direction of the error is the dangerous one. Bench at 2 threads AND pin to 2 cores
+(tools/bench_bundle.py, which plays the staged tree rather than projecting from a constant).
+So ``score`` accumulates inference time and
 RAISES once ``time_budget`` is spent; ``make_lm_agent`` catches that and falls back to
 engine_v2 for the rest of the game. Pure safety -- it never routes on difficulty.
 

@@ -1,6 +1,6 @@
 """Benchmark the INT8 ONNX reranker on CPU under Kaggle-like constraints.
 
-The competition runtime gives 4 vCPU (AMD EPYC) and a 600 s CUMULATIVE thinking bank per
+The competition runtime gives 2 vCPU and a 600 s CUMULATIVE thinking bank per
 game, so the question is: (per-decision latency) x (scored decisions per game) < 600 s?
 
 A cross-encoder re-encodes the FULL ~830-token state once PER CANDIDATE (no KV reuse), so
@@ -50,7 +50,10 @@ def main():
     ap.add_argument("--tokenizer", required=True, help="dir with tokenizer.json")
     ap.add_argument("--data", required=True)
     ap.add_argument("--n", type=int, default=120)
-    ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--threads", type=int, default=2,
+                    help="grader vCPUs. Benching above this on a box with spare cores "
+                         "measures a machine that does not exist; pin with taskset too, "
+                         "since ORT threads are not the same as available cores.")
     ap.add_argument("--max-len", type=int, default=1024)
     ap.add_argument("--warmup", type=int, default=3)
     ap.add_argument("--remap", default="", help="vocab_remap.npy for a vocab-pruned --onnx; "

@@ -571,3 +571,15 @@ if __name__ == "__main__":
     view["pilots"] = f"[{len(cfg['pilots'])} decks]"
     view["opponents"] = f"[{sum(1 for v in cfg['opponents'].values() if v>0)} nonzero]"
     print(json.dumps(view, indent=2, ensure_ascii=False))
+
+
+# instance1 pilots ONE deck (dragapult_dusknoir), so the DECK[] segment is the same 57 tokens
+# on every row: zero information, 15% of the prompt. Measured both ways on the single-deck SFT
+# round -- full 54.0% top1 vs 54.6% without it -- and the reverse on the eleven-deck mix,
+# where the segment does vary and helped (55.0 vs 53.4). It earns its place only when the deck
+# changes.
+#
+# PROMPT_FMT itself is NOT touched: instance2's 4B ranges over all eleven decks and needs it.
+# `ID ME` is already absent under identify='op'.
+DUSK_FMT = dict(PROMPT_FMT)
+DUSK_FMT["deck_mode"] = "none"          # consumed by callers as deck_ids=None

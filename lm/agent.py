@@ -81,7 +81,7 @@ def _dedup(texts, obs=None):
 def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=None,
                   deck_glossary=True, deck_mode="static", deck_shuffle=False,
                   board_facts=False, identify="both", menu_dedup=False,
-                  hidden_facts=False):
+                  hidden_facts=False, defer_kinds=()):
     """``glossary`` / ``deck_name`` / ``deck_glossary`` MUST match what build_rerank or
     build_sft rendered the TRAINING data with -- the prompt format is part of the model,
     not a runtime option.
@@ -92,8 +92,17 @@ def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=Non
     glossary_ids fell back to visible-only. Inference meanwhile passed the real 60 cards,
     pushing the prompt to ~1394 tokens against a 1024 truncation that cuts from the RIGHT --
     deleting the board and the option menu (measured: the SEL menu survived in 1% of
-    decisions). Set False to make inference match that data."""
+    decisions). Set False to make inference match that data.
+
+    ``defer_kinds`` routes whole ACTION KINDS to engine_v2 instead of the model: a decision
+    where any candidate encodes to one of these kinds is answered by the heuristic. This is
+    not a fallback -- it is the shipped form of a measured result. The model's attach
+    decisions rank at 16-29% top1 against a 14% chance baseline, and handing ONLY attach to
+    engine_v2 was worth +11.4pt. The same mechanism has lived in tools/mirror_match.py as
+    make_defer, where that number was measured, but never in the adapter that ships, so the
+    win was unreachable from a submission. Passing () keeps the pure-LM behaviour."""
     policy = make_policy(deck, profile or {})     # engine_v2 = shipped pilot + fallback
+    defer = frozenset(defer_kinds or ())
     deck_ids = deck if deck_glossary else None
     _ser = lambda o: serialize_stateless(o, deck_ids=deck_ids, glossary=glossary,  # noqa: E731
                                          deck_name=deck_name, deck_mode=deck_mode,
@@ -141,6 +150,12 @@ def make_lm_agent(deck, profile=None, model=None, glossary="full", deck_name=Non
             return deck
         if model is None or not _real_choice(sel):
             return policy.act(obs_dict)                # no model, or a forced/trivial select
+        if defer:
+            # Kind is the head of the encoding, before ':' and before any '@target' -- the
+            # same derivation make_defer uses, so a deferral measured there transfers here.
+            for o in (sel.get("option") or []):
+                if encode_option(o, obs_dict).split(":", 1)[0].split("@", 1)[0] in defer:
+                    return policy.act(obs_dict)
         try:
             idx = _score_pick(obs_dict)
             if idx is not None:

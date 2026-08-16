@@ -150,9 +150,18 @@ def _raw_step(search_id, select):
     return json.loads(bs.decode())
 
 
+# Terminal shaping for the mirror-RL reward (user 2026-08-10: win/loss + prizes + rules).
+# Prize margin enters the TERMINAL value only -- it is a variance reducer on the +-1 outcome
+# (32-scenario SE 0.18), NOT a state potential; the state-potential version is what
+# [[evaluator-early-game-blind]] swept and rejected. Default 0.0 keeps every existing caller
+# (instance2's branchd among them) bit-identical.
+PRIZE_GAMMA = float(os.environ.get("RL_PRIZE_GAMMA", "0") or 0)
+
+
 def _playout(state, pilot_i, agent_me, agent_opp, max_steps=4000):
     """Drive a branch to a terminal result with engine_v2 on both sides.
-    Returns +1 / -1 for the PILOT, or None if the branch did not resolve."""
+    Returns +1 / -1 for the PILOT (plus the PRIZE_GAMMA margin term when enabled),
+    or None if the branch did not resolve."""
     steps = 0
     while steps < max_steps:
         ob = state.get("observation") or {}
@@ -161,7 +170,17 @@ def _playout(state, pilot_i, agent_me, agent_opp, max_steps=4000):
             return None
         r = cur.get("result", -1)
         if r != -1:
-            return 1 if r == pilot_i else -1
+            v = 1.0 if r == pilot_i else -1.0
+            if PRIZE_GAMMA:
+                try:
+                    pls = cur.get("players") or []
+                    mine = len((pls[pilot_i] or {}).get("prize") or [])
+                    theirs = len((pls[1 - pilot_i] or {}).get("prize") or [])
+                    # prizes are the REMAINING piles; taken_me - taken_opp = theirs - mine
+                    v += PRIZE_GAMMA * (theirs - mine) / 6.0
+                except Exception:                              # noqa: BLE001
+                    pass
+            return v
         if not ob.get("select"):
             return None
         agent = agent_me if cur.get("yourIndex") == pilot_i else agent_opp

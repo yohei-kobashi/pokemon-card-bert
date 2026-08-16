@@ -40,7 +40,20 @@ TAR_CAP = 207257600           # 197.65625 MiB, measured on the .tar.gz
 #   vocab -> cg.api | actions -> vocab | serialize -> vocab, actions | agent -> serialize, actions
 # `identify` and `roles` are imported LAZILY from inside serialize, but they are embedded here
 # anyway -- lazily-imported and swallowed is exactly how the ID segment went missing before.
-LM_EMBED = ("vocab", "actions", "identify", "roles", "serialize", "rerank_scorer", "agent")
+LM_EMBED = ("vocab", "costs", "actions", "damage", "hidden", "identify", "roles",
+            "action_token", "serialize", "rerank_scorer", "plan_filter", "agent")
+# Embedded as TOP-LEVEL modules, not under lm/. tools/dusk_plan.py holds the hand-authored plan
+# rules, and lm/plan_filter.py resolves it by bare name at call time precisely so it can be
+# installed here without the research tree coming with it. Only pulled in when --wrap asks for
+# it: a bundle with no wrapper must not carry 705 lines of rules it never calls.
+PLAN_EMBED = ("dusk_plan",)
+# costs/damage/hidden/action_token were added to lm/ after this list was written and never added
+# to it. Only `costs` failed loudly (serialize imports it at module level, and the selfcheck's
+# tier assertion caught that). The other three are imported LAZILY inside the functions that
+# render the prompt -- hidden -> hidden_facts, damage -> board_facts, action_token -> menu_dedup,
+# all three ON in the current format -- so their absence silently deletes prompt segments the
+# model was trained on 100% of the time, which is the exact failure this embedding scheme exists
+# to prevent. Keep the tuple in DEPENDENCY ORDER: each module is exec'd when its turn comes.
 AGENT_FILES = ("engine_v2.py", "_engine.py", "tuning.json")
 # onnxruntime's wheel is ~90 MiB, nearly all of it tooling the InferenceSession never loads
 ORT_STRIP = ("test", "tests", "tools", "transformers", "quantization", "datasets",
@@ -66,19 +79,98 @@ same module, so any lm import failure left no fallback at all -- just ERROR.
 """
 import os
 
-# Cap CPU threading BEFORE any native lib loads: Kaggle gives 4 vCPU and an unpinned
-# OpenMP/BLAS pool oversubscribes and thrashes.
+# Cap CPU threading BEFORE any native lib loads: the grader gives 2 vCPU and an unpinned
+# OpenMP/BLAS pool oversubscribes and thrashes. This file previously said 4 -- an
+# unsourced number repeated from tools/bench_rerank_onnx.py, which is where every speed
+# projection in the reranker plan came from. Benching at 4 threads on a box with spare
+# cores measures a machine that does not exist and reports roughly half the real cost.
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
            "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
     os.environ.setdefault(_v, "{threads}")
 
+# tools/dusk_plan.py gates the BEHAVIOUR of six rules on these two flags (_NEW_EXCL and
+# _CLOPS_HOLD, read at import). RULES still lists all sixteen names either way, so a wrapper
+# naming a gated rule does NOT raise -- the rule simply returns an empty set and silently
+# constrains nothing. Every training and gating run exports them; submission 55445834 did not,
+# and the audit of its 19 live games shows the cost exactly: lethal_now, clops_hold,
+# judge_timing, spare_ex_bench, retreat_energy and stadium_replace fired ZERO times, so two of
+# the five rules the shipped wrapper spec names were inert on the ladder. Set BEFORE dusk_plan
+# is imported, which is why this sits with the thread caps rather than next to the wrapper.
+for _v in ("DUSK_NEW_RULES", "DUSK_CLOPS_HOLD", "DUSK_FRONT_DIVE", "DUSK_BOSS_LETHAL",
+           "DUSK_TIPS", "DUSK_SPIKE"):
+    os.environ.setdefault(_v, "1")
+
 import sys
 import types
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+def _find_here():
+    """The bundle's own directory, without assuming __file__ exists.
+
+    Kaggle EXECs main.py instead of importing it, so __file__ is never bound. The old one-liner
+    sat above every try/except in this file, so that NameError killed the module at load:
+    `agent` was never defined, the three-tier fallback below never ran, and the harness recorded
+    action=null at step 1 with the 600 s bank untouched. That is the signature of ALL SEVEN LM
+    submissions to date -- including the ones whose notes say the deck-selection call was
+    already fixed. It was. It never got the chance to run. The engine_v2 bundles score because
+    they resolve their paths from a candidate LIST and never touch __file__.
+
+    Probed by CONTENT, not by guessing one path: a directory is only accepted if it holds the
+    two files this bundle cannot run without.
+    """
+    try:
+        return os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        pass
+    cands = ["/kaggle_simulations/agent", os.getcwd()]
+    if sys.argv and sys.argv[0]:
+        cands.append(os.path.dirname(os.path.abspath(sys.argv[0])))
+    cands += [p for p in sys.path if p]
+    for _d in cands:
+        try:
+            if (os.path.exists(os.path.join(_d, "main.py"))
+                    and os.path.exists(os.path.join(_d, "deck.csv"))):
+                return os.path.abspath(_d)
+        except Exception:
+            continue
+    return os.getcwd()
+
+
+HERE = _find_here()
 for _p in (HERE, os.path.join(HERE, "cg-lib")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+
+def _install_local_pkg(name):
+    """Bind `name` to THIS bundle's copy, whatever else is on sys.path.
+
+    Kaggle's runtime ships kaggle_environments/envs/lux_ai_s3/agents.py and its directory
+    precedes ours in the grader's sys.path, so a plain `import agents` resolves to THAT file --
+    which then dies on its own relative import ("attempted relative import with no known parent
+    package") and takes us down with it. Every fallback tier routes through
+    `from agents.engine_v2 import make_policy` (tier 3 directly, tiers 1-2 via lm/agent), so one
+    shadowed name killed all three at once and the bundle could not even reach engine_v2.
+
+    Registering the package by FILE PATH removes the dependency on path order entirely -- the
+    same reason lm/ is exec'd into sys.modules below rather than imported.
+    """
+    import importlib.util
+    _d = os.path.join(HERE, name)
+    _init = os.path.join(_d, "__init__.py")
+    if not os.path.exists(_init):
+        return False
+    _spec = importlib.util.spec_from_file_location(name, _init, submodule_search_locations=[_d])
+    _mod = importlib.util.module_from_spec(_spec)
+    sys.modules[name] = _mod
+    _spec.loader.exec_module(_mod)
+    return True
+
+
+for _pkg in ("agents", "cg"):
+    try:
+        _install_local_pkg(_pkg)
+    except Exception:
+        pass          # a shadowed name is survivable; a raise here would not be
 
 import json
 
@@ -87,9 +179,18 @@ DECK_NAME = {deck!r}
 # lives in four renderers; passing it as loose command-line flags is how train and deploy drift
 # apart without anything failing.
 PROMPT_FMT = {pfmt!r}
+# Action kinds handed to engine_v2 instead of the model. Baked at build time for the same reason
+# the prompt format is: a routing that was measured on one configuration and shipped on another
+# is not the thing that was measured.
+DEFER_KINDS = {defer!r}
+# The plan-rule wrapper, e.g. "planfilter:lethal_now,spread_aim,...". Baked for the same reason
+# as the two above: this one is not a tuning knob but a POLICY -- it takes whole decision families
+# off the model -- and a bundle built with a different rule list is a different pilot.
+WRAP = {wrap!r}
 
 _LM_ORDER = {lm_order!r}
 _LM_SRC = {lm_src!r}
+_PLAN_SRC = {plan_src!r}
 
 
 def _install_lm():
@@ -114,6 +215,21 @@ def _install_lm():
         sys.modules[_full] = _m
         exec(compile(_LM_SRC[_name], _m.__file__, "exec"), _m.__dict__)
         setattr(pkg, _name, _m)
+
+
+def _install_plan():
+    """Install the plan modules under their BARE names, the way lm/plan_filter looks for them.
+
+    They live in tools/ in the repo and there is no tools package here, so the import that
+    resolves in the repo (`import dusk_plan`, with tools/ on sys.path) is made to resolve the
+    same way by registering the source directly. Exec'd with __name__ set to the module name so
+    the file's own `if __name__ == "__main__"` CLI block stays dormant.
+    """
+    for _name, _src in _PLAN_SRC.items():
+        _m = types.ModuleType(_name)
+        _m.__file__ = os.path.join(HERE, _name + ".py")
+        sys.modules[_name] = _m
+        exec(compile(_src, _m.__file__, "exec"), _m.__dict__)
 
 
 def _load_deck(name):
@@ -172,8 +288,23 @@ if _lm_ok:
             os.path.join(HERE, "model.onnx"), HERE,
             max_len={max_len}, threads={threads}, time_budget={time_budget},
             remap=os.path.join(HERE, "vocab_remap.npy"))
-        _agent = make_lm_agent(_deck, _profile, model=_scorer, deck_name=DECK_NAME, **PROMPT_FMT)
-        TIER = "reranker"
+        _agent = make_lm_agent(_deck, _profile, model=_scorer, deck_name=DECK_NAME,
+                               defer_kinds=DEFER_KINDS, **PROMPT_FMT)
+        TIER = "reranker" if not DEFER_KINDS else "reranker+defer:" + ",".join(DEFER_KINDS)
+        if WRAP:
+            # Deliberately its own try. A wrapper that cannot load must cost us the WRAPPER, not
+            # the model: dropping to engine_v2 over it would trade a measured 62.0% pilot for a
+            # measured 55% one. The build-time selfcheck asserts WRAP is in TIER, so this can
+            # only ever fire on Kaggle, and the tier string then says so instead of lying.
+            try:
+                _install_plan()
+                from lm.plan_filter import make_plan_rule
+                _head, _, _rules = WRAP.partition(":")
+                _agent = make_plan_rule(_agent, _rules.split(","),
+                                        strict=(_head == "planrule"))
+                TIER += "+" + WRAP
+            except Exception:
+                TIER += "+wrapfailed"
     except Exception:
         try:
             _agent = make_lm_agent(_deck, _profile, model=None)
@@ -193,6 +324,19 @@ def agent(obs_dict: dict) -> list:
     # at agents/engine_v2.py (`if obs.select is None: return self.deck`), lm/agent.py does not,
     # and that alone ERRORed three LM submissions before it was found.
     if obs_dict.get("select") is None:
+        # Forward it FIRST, for the side effect: lm/agent.py treats select=None as "new game"
+        # and refills the scorer's time bank there. The old fast path returned _deck without
+        # ever reaching the pilot, so reset_bank() was unreachable from a bundle and `spent`
+        # accumulated across every episode the process served -- measured on the staged tree at
+        # 49.7 -> 94.4 -> 166.1 -> 221.5 -> 249.9 s over five consecutive games. Nothing errors
+        # when that budget runs out; the scorer raises, lm/agent catches it, and the rest of the
+        # match is played by engine_v2 while the tier string still says "reranker".
+        try:
+            _agent(obs_dict)
+        except Exception:
+            pass
+        # The return value is OURS regardless: the deck contract is 60 ints, and a fallback tier
+        # or a wrapper returning something else must not be able to break it.
         return list(_deck)
     return _agent(obs_dict)
 '''
@@ -220,7 +364,39 @@ import main as M                            # noqa: E402  (runs the real import 
 #    scores -- in the engine_v2 band -- and that score would be recorded as the LM's live
 #    rating. A silent degrade is worse than a build failure.
 print("SELFCHECK tier %s" % M.TIER)
-assert M.TIER == "reranker", "scorer did not load; this bundle would play as engine_v2"
+assert M.TIER.startswith("reranker"), "scorer did not load; this bundle would play as engine_v2"
+# TIER is "reranker" ["+defer:<kinds>"] ["+<wrap>"], and it is the ONLY runtime evidence of what
+# the bundle actually built -- every layer below the reranker still plays legal games. Parse it
+# and prove it describes the constants, rather than pattern-matching a prefix.
+_parts = M.TIER.split("+")
+_tdefer = [p.partition(":")[2] for p in _parts if p.startswith("defer:")]
+_twrap = [p for p in _parts[1:] if not p.startswith("defer:")]
+assert set(M.DEFER_KINDS or ()) == set(_tdefer[0].split(",") if _tdefer else []) - {""}, \
+    "TIER %r does not describe DEFER_KINDS %r" % (M.TIER, M.DEFER_KINDS)
+assert _twrap == ([M.WRAP] if M.WRAP else []), \
+    "TIER %r does not describe WRAP %r (wrapfailed = the plan did not load)" % (M.TIER, M.WRAP)
+
+# The wrapper takes whole decision families off the model, so "it imported" is not enough: the
+# rule NAMES have to exist in the plan that shipped. A typo'd or renamed rule raises inside
+# make_plan_rule, which the runtime catches into +wrapfailed -- caught above -- but a rule that
+# exists under a stale definition would not, so print the plan's full rule set for the record.
+if M.WRAP:
+    import dusk_plan                            # noqa: E402  installed by main.py's _install_plan
+    _want = M.WRAP.partition(":")[2].split(",")
+    _missing = [r for r in _want if r not in dusk_plan.RULES]
+    assert not _missing, "wrap names rules the bundled plan does not have: %r" % (_missing,)
+    # Name-checking RULES is NOT enough, and believing it was is what shipped 55445834 with two
+    # of its five wrapper rules dead. dusk_plan reads DUSK_NEW_RULES / DUSK_CLOPS_HOLD at import
+    # and, when they are unset, keeps every rule NAME while emptying six rules' good sets -- so
+    # the wrapper builds, the tier string is honest, the selfcheck passes, and the rules do
+    # nothing. Assert the gates themselves, in the interpreter that just imported main.py.
+    for _flag in ("_NEW_EXCL", "_CLOPS_HOLD", "_FRONT_DIVE", "_BOSS_LETHAL",
+                  "_TIPS", "_SPIKE"):
+        assert getattr(dusk_plan, _flag, False), (
+            "dusk_plan.%s is False: main.py did not set the env flag before importing the plan, "
+            "so gated rules would silently constrain nothing" % _flag)
+    print("SELFCHECK wrap %s | plan carries %d rules | gates _NEW_EXCL/_CLOPS_HOLD both live"
+          % (M.WRAP, len(dusk_plan.RULES)))
 
 # 2. The first observation of every Kaggle episode has select=None and must return the 60-card
 #    deck. The local harness starts from battle_start() and NEVER issues this call, so passing
@@ -245,6 +421,45 @@ assert M.PROMPT_FMT.get("deck_mode") in serialize.DECK_MODES, "unknown deck_mode
 if M.PROMPT_FMT.get("deck_mode") == "roles":
     assert roles.for_deck(M.DECK_NAME), \
         "no prompt roles for %s: DECK[] would collapse to one 'oth' group" % M.DECK_NAME
+
+# 4. THE GRADER EXECS main.py; it does not import it. Under exec there is no __file__, and every
+#    check above binds one by importing -- which is why seven LM submissions passed this file and
+#    then died at module load on a bare NameError, before any of the three fallback tiers could
+#    run. Run the source the way the grader runs it.
+src = open(os.path.join(HERE, "main.py")).read()
+g = {"__name__": "__main__"}
+exec(compile(src, "main.py", "exec"), g)          # noqa: S102 -- this IS the thing under test
+assert "agent" in g, "exec of main.py defined no agent()"
+d2 = g["agent"](first)
+assert isinstance(d2, list) and len(d2) == 60 and all(isinstance(x, int) for x in d2), \
+    "exec-mode deck-selection returned %r" % (type(d2).__name__,)
+assert str(g.get("TIER", "")).startswith("reranker"), \
+    "exec-mode fell back to tier %r" % (g.get("TIER"),)
+print("SELFCHECK exec-mode OK (tier %s)" % g.get("TIER"))
+
+# 5. The grader's sys.path holds kaggle_environments/envs/lux_ai_s3/agents.py AHEAD of the
+#    bundle, so a plain `import agents` binds THAT file, which dies on its own relative import
+#    and takes us with it. Every tier routes through `from agents.engine_v2 import make_policy`,
+#    so the shadow killed the reranker, the engine-through-lm tier and the bare engine tier
+#    together -- submission 8, immediately after the __file__ bug was fixed. Reproduce the
+#    shadow and prove the bundle still binds its own copy.
+import tempfile                                   # noqa: E402
+_decoy = tempfile.mkdtemp()
+with open(os.path.join(_decoy, "agents.py"), "w") as _f:
+    _f.write("from .test_agents.python.main import agent_fn\n")   # lux_ai_s3's exact shape
+sys.path.insert(0, _decoy)
+for _m in [k for k in list(sys.modules) if k == "agents" or k.startswith("agents.")]:
+    sys.modules.pop(_m, None)
+g2 = {"__name__": "__main__"}
+exec(compile(src, "main.py", "exec"), g2)
+import agents as _ag                              # noqa: E402
+assert os.path.abspath(getattr(_ag, "__file__", "")).startswith(os.path.abspath(HERE)), \
+    "agents resolved to %r -- the bundle is shadowed" % getattr(_ag, "__file__", None)
+d3 = g2["agent"](first)
+assert isinstance(d3, list) and len(d3) == 60, "shadowed deck-selection returned %r" % (d3,)
+assert str(g2.get("TIER", "")).startswith("reranker"), \
+    "under a shadowed `agents` the bundle fell to tier %r" % (g2.get("TIER"),)
+print("SELFCHECK shadow-resistant OK (tier %s)" % g2.get("TIER"))
 print("SELFCHECK OK")
 '''
 
@@ -280,23 +495,73 @@ def main():
     # ONE knob, resolved from tools/rl_config, instead of three flags that must be remembered.
     # The prompt format is part of the model and is rendered in four places; every past
     # train/deploy divergence came from passing it by hand.
-    ap.add_argument("--pfmt", default="current", choices=("current", "v37"),
+    ap.add_argument("--defer", default="",
+                    help="comma-separated action kinds routed to engine_v2 instead of the "
+                         "model (e.g. 'attach'). Empty = pure LM.")
+    ap.add_argument("--wrap", default="",
+                    help="plan-rule wrapper, 'planfilter:<rule>,...' (the plan narrows the menu "
+                         "and the model ranks inside) or 'planrule:<rule>,...' (the plan "
+                         "decides). Empty = the model sees every menu.")
+    ap.add_argument("--pfmt", default="current", choices=("current", "v37", "dusk"),
                     help="current = rl_config.PROMPT_FMT (what build_rerank just used); "
                          "v37 = rl_config.PROMPT_FMT_V37, for models trained before the rebuild")
     ap.add_argument("--tag", required=True)
-    ap.add_argument("--threads", type=int, default=4)
-    ap.add_argument("--max-len", type=int, default=1024)
+    ap.add_argument("--threads", type=int, default=2, help="grader vCPUs; see main.py")
+    ap.add_argument("--max-len", type=int, default=1024,
+                    help="512 for DeBERTa-v3 (max_position_embeddings), which is what "
+                         "HFRerankScorer clamps to -- exceed it and the deploy model "
+                         "sees longer inputs than the checkpoint was ever scored on")
     ap.add_argument("--time-budget", type=float, default=480.0)
     ap.add_argument("--out", default=os.path.join(ROOT, "submissions"))
+    ap.add_argument("--from-registry", action="store_true",
+                    help="take --pfmt/--defer from this deck's models/adapters.json entry and "
+                         "refuse to build if a flag contradicts it")
     args = ap.parse_args()
 
     import library
     if args.deck not in set(library.list_decks()):
         raise SystemExit(f"unknown deck: {args.deck!r}")
 
+    if args.from_registry:
+        # A per-deck adapter is gated with one prompt format and one defer set; shipping it with
+        # another is the exact divergence this flag exists to make impossible. The ONNX file
+        # itself still comes from --onnx: the registry names checkpoints, not exports.
+        from lm import registry as _reg
+        r = _reg.resolve(args.deck, require_exists=False)
+        if r["source"] != "deck":
+            raise SystemExit(f"--from-registry: no entry for {args.deck!r} in "
+                             f"{_reg.registry_path()}; add one with tools/adapters.py set")
+        want_defer = ",".join(r["entry"].get("defer") or [])
+        want_wrap = (r["entry"].get("wrap") or "").rstrip(":")
+        # the registry says "prompt"/"dusk"; this builder's flag says "current"/"dusk"
+        want_pfmt = {"prompt": "current", "dusk": "dusk"}[r["fmt"]]
+        for flag, given, wanted in (("--pfmt", args.pfmt, want_pfmt),
+                                    ("--defer", args.defer, want_defer),
+                                    ("--wrap", args.wrap, want_wrap)):
+            if given not in ("", "current") and given != wanted:
+                raise SystemExit(f"--from-registry: {flag}={given!r} contradicts the registry "
+                                 f"({wanted!r}) for {args.deck}")
+        args.pfmt, args.defer, args.wrap = want_pfmt, want_defer, want_wrap
+        print(f"[reg] {args.deck} -> {r['spec']} (fmt {r['fmt']})", flush=True)
+
     from tools import rl_config
-    pfmt = dict(rl_config.PROMPT_FMT if args.pfmt == "current" else rl_config.PROMPT_FMT_V37)
+    pfmt = dict({"current": rl_config.PROMPT_FMT, "v37": rl_config.PROMPT_FMT_V37,
+                 "dusk": rl_config.DUSK_FMT}[args.pfmt])
+    defer = tuple(x for x in (s.strip() for s in args.defer.split(",")) if x)
+    wrap = args.wrap.strip().rstrip(":")
+    if wrap:
+        head, _, rules = wrap.partition(":")
+        if head not in ("planfilter", "planrule"):
+            # planengine is the matched CONTROL for the wrapper experiment -- it routes the
+            # rule's menus to engine_v2. Measuring with it is the point; shipping it would ship
+            # the control instead of the arm.
+            raise SystemExit(f"--wrap: {head!r} is not shippable "
+                             f"(use planfilter:<rules> or planrule:<rules>)")
+        if not [r for r in rules.split(",") if r.strip()]:
+            raise SystemExit("--wrap: no rules named")
     print(f"prompt format ({args.pfmt}): {pfmt}", flush=True)
+    print(f"deferred to engine_v2: {list(defer) or 'nothing (pure LM)'}", flush=True)
+    print(f"plan wrapper: {wrap or 'none (the model sees every menu)'}", flush=True)
 
     stage = os.path.join(args.out, args.tag)
     shutil.rmtree(stage, ignore_errors=True)
@@ -311,9 +576,16 @@ def main():
         lm_src[name] = open(os.path.join(ROOT, "lm", name + ".py")).read()
     print(f"lm modules embedded: {len(lm_src)} "
           f"({sum(len(v) for v in lm_src.values()) / 1024:.0f} KiB)", flush=True)
+    plan_src = {}
+    if wrap:
+        for name in PLAN_EMBED:
+            plan_src[name] = open(os.path.join(ROOT, "tools", name + ".py")).read()
+        print(f"plan modules embedded: {len(plan_src)} "
+              f"({sum(len(v) for v in plan_src.values()) / 1024:.0f} KiB)", flush=True)
 
     with open(os.path.join(stage, "main.py"), "w") as f:
-        f.write(MAIN_TEMPLATE.format(deck=args.deck, tag=args.tag, pfmt=pfmt,
+        f.write(MAIN_TEMPLATE.format(deck=args.deck, tag=args.tag, pfmt=pfmt, defer=defer,
+                                     wrap=wrap, plan_src=plan_src,
                                      lm_order=LM_EMBED, lm_src=lm_src,
                                      threads=args.threads, max_len=args.max_len,
                                      time_budget=args.time_budget))
