@@ -1,5 +1,18 @@
 # ポケモンTCG AI エージェント開発
 
+## 学習済みモデル（HuggingFace）
+
+コンペ終了時点（2026-08-17、最終レーティング 398.2 = dusk_v3）の成果物:
+
+| モデル | 内容 |
+|---|---|
+| [ptcg-dusknoir-deberta-reranker](https://huggingface.co/yoheikobashi/ptcg-dusknoir-deberta-reranker) | 提出パイロット本体。DeBERTa-v3-base クロスエンコーダ（fld_r49b, mirror-RL/field DPO 67ラウンド）＋ デプロイ用 INT8 ONNX |
+| [ptcg-qwen3-4b-cardfirst-v40](https://huggingface.co/yoheikobashi/ptcg-qwen3-4b-cardfirst-v40) | Qwen3-4B SFTベース（ドメイントークン約3k、11デッキ自己対戦 ~1.5M 決定で学習）。全LoRAの共有ベース |
+| [ptcg-qwen3-4b-dpo-loras](https://huggingface.co/yoheikobashi/ptcg-qwen3-4b-dpo-loras) | デッキ別 DPO LoRA 群（プレイアウト裁定ペア、±4pt ship/revert ゲート） |
+
+学習インフラの実体は `tools/instance/`（両Vastインスタンスの全スクリプトのアーカイブ）、
+人間対局の一次データは `human_games/` を参照。
+
 Kaggle「pokemon-tcg-ai-battle」向けの対戦エージェント開発リポジトリ。ルールベースのヒューリスティックエンジン（`agents/engine_v2.py`）と、その自己対戦データで学習する軽量な学習エージェント（提出用）を開発している。デッキ一覧・引用元は本ファイル末尾を参照。
 
 ## ヒューリスティックエンジン（`agents/engine_v2.py`）
