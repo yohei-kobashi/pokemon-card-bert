@@ -32,6 +32,8 @@ cardfirst-v40 のベース LoRA と `domain_embeddings.pt` を先に適用する
 
 ## 自由研究キット: 人と対戦して集めたデータでモデルを追加学習する
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yohei-kobashi/pokemon-card-bert/blob/main/notebooks/ptcg_kenkyu_colab.ipynb)
+
 **研究テーマ: play_server でヒューリスティックエンジンとたくさん対戦して記録をため、Google Colab で
 `ptcg-dusknoir-deberta-reranker` に追加学習して、ogerpon_mono（オーガポン）への勝率をどこまで上げられるか。**
 
@@ -56,7 +58,7 @@ ogerpon_mono はこのプロジェクトが最後まで攻略できなかった�
 | `play_server.py` | ブラウザで人 vs AI の対戦。終わるたびにドライブへ自動保存 |
 | `tools/kenkyu/sync_logs.py` | 過去の記録をまとめてドライブへ／zip にして手動アップ |
 | `tools/kenkyu/log_stats.py` | **学習前の集計**（試合数・相手別勝率・日付別勝率） |
-| `notebooks/ptcg_kenkyu_colab.ipynb` | Colab で追加学習（期間・学習率・GPU を指定） |
+| `notebooks/ptcg_kenkyu_colab.ipynb` | Colab で追加学習（期間・相手・学習率・GPU を指定）。上のバッジから直接開けます |
 | `agents/lm_dusknoir.py` | 学習したモデルを **人間の対戦相手**として動かす |
 | `tools/kenkyu/battle_eval.py` | エンジンと対戦させて勝率を測り、**モデル同士を比較** |
 
@@ -100,9 +102,10 @@ python tools/kenkyu/setup_local.py --drive "<ドライブのフォルダ>"
    （Windows は `cg.dll`、Linux は `libcg.so`、Apple Silicon Mac は `libcg.dylib`。
    Intel Mac だけは配布バイナリが無いので、公開されている C++ ソースからコンパイルします
    ＝ 20〜60秒、`xcode-select --install` が必要）
-2. ドライブに `logs/` `models/` `cg/` を作り、**対戦が終わるたびに記録がドライブへコピーされる**ように
-   `config.json` に書き込む。あわせて Colab 用に **`cg/`（エンジン一式）** と **`repo.zip`（このリポジトリの
-   スナップショット、約3MB）** を置く（これがあれば Colab に Kaggle の鍵も GitHub の公開設定も要りません）
+2. ドライブに `logs/` `models/` を作り、**対戦が終わるたびに記録がドライブへコピーされる**ように
+   `config.json` に書き込む。あわせて Colab 用に `cg/`（エンジン一式）を置く
+   — **これがあれば Colab 側に Kaggle の鍵は要りません**（`repo.zip` も一緒に置かれますが、
+   これは GitHub につながらないときの予備で、ふだんは使いません）
 3. **実際に2試合プレイして動作確認**（ファイルが揃っただけでは成功と言わない）
 
 うまくいくと最後に `OK. Start playing:` と出ます。あとから確認だけしたいときは
@@ -169,13 +172,9 @@ turns      : 平均 10.6
 
 ### 4. Colab で追加学習する
 
-`notebooks/ptcg_kenkyu_colab.ipynb` を Colab で開きます。
-
-- GitHub リポジトリが**公開**なら:
-  [このリンク](https://colab.research.google.com/github/yohei-kobashi/pokemon-card-bert/blob/main/notebooks/ptcg_kenkyu_colab.ipynb)
-- **非公開**なら: Colab の「ファイル → ノートブックをアップロード」で
-  `notebooks/ptcg_kenkyu_colab.ipynb` を選ぶ（リポジトリ本体は手順1でドライブに置いた
-  `repo.zip` から自動で展開されます）
+[**このリンクでノートブックを Colab で開きます**](https://colab.research.google.com/github/yohei-kobashi/pokemon-card-bert/blob/main/notebooks/ptcg_kenkyu_colab.ipynb)
+（`notebooks/ptcg_kenkyu_colab.ipynb`）。リポジトリもモデルも公開なので、ログインやトークンは要りません
+— Colab が自分でクローンし、モデルは HuggingFace から取ってきます。
 
 **先に「ランタイム → ランタイムのタイプを変更 → GPU」**。無料版では T4 が割り当てられます。
 
@@ -290,7 +289,7 @@ heuristic        ogerpon_mono          400     12     3.0%  1.7 -  5.2      2
 | Colab で `torch.cuda not available` | ランタイムのタイプを GPU に変更してから、上から実行し直す |
 | T4 で out of memory | 設定セルの `GPU_PROFILE` を `T4` に固定（`--maxlen 448`）。1行だけ大きすぎる場合は自動でスキップされます |
 | 対戦が遅い | 判断の数だけモデルを動かすので CPU では時間がかかります。評価は Colab の GPU で |
-| Colab のツールが古い（非公開リポジトリのとき） | `repo.zip` は手順1の時点のスナップショットです。家のPCで `git pull` したら `setup_local.py --drive ...` を実行し直してください |
+| Colab でリポジトリを取得できない（GitHub 側の障害など） | 手順1でドライブに置いた `repo.zip` から自動で展開されます。その zip は手順1の時点のスナップショットなので、家のPCで `git pull` したら `setup_local.py --drive ...` を実行し直してください |
 
 ---
 

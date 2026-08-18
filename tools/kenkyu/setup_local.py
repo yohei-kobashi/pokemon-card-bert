@@ -220,9 +220,10 @@ def export_drive(drive, api_getter):
 def export_repo(drive):
     """Snapshot the repo into Drive as repo.zip (~3 MB).
 
-    The Colab notebook clones from GitHub, which only works while the repository is public.
-    A private repo would leave the notebook unable to start at all, so the setup that has the
-    working copy in front of it also leaves a copy where Colab can reach it."""
+    The Colab notebook clones from GitHub (the repository is public), and falls back to this
+    zip when the clone produces nothing -- GitHub being unreachable, or the repository having
+    been made private again. Cheap insurance: the setup already has the working copy in front
+    of it, and a notebook that cannot obtain the code cannot start at all."""
     out = os.path.join(drive, "repo.zip")
     try:
         subprocess.run(["git", "archive", "--format=zip", "-o", out, "HEAD"],
