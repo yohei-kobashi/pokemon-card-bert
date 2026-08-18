@@ -64,61 +64,180 @@ ogerpon_mono はこのプロジェクトが最後まで攻略できなかった�
 
 ---
 
-### 0. 用意するもの
+### 0. 用意するもの（はじめての人向け）
 
-- **Python 3.9 以上**（3.11 か 3.12 がおすすめ）
-- **Kaggle アカウント** … 対戦エンジン（`cg`）はコンペの配布物で、このリポジトリには入っていません。
-  [コンペのページ](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle)でルールに同意し、
-  アカウントページの「Create New Token」で `kaggle.json` を保存して、
-  `~/.kaggle/kaggle.json`（Windows は `%USERPROFILE%\.kaggle\kaggle.json`）に置きます。
-- **Google アカウント**（ドライブ ＋ Colab）
-- Google ドライブのパソコン用アプリ（Windows / Mac）。Linux には公式アプリが無いので、
-  その場合は zip にして手動アップロードします（後述）。
+- **パソコン** … Windows / macOS / Linux のどれでも大丈夫です。**Windows は WSL を使いません**（普通の PowerShell で動きます）。
+- **Python 3.9 以上** … 入れ方は下の「1. セットアップ」に OS 別で書いてあります。
+- **Kaggle アカウント**（無料） … 対戦エンジンをダウンロードするのに使います。
+- **Google アカウント**（無料） … Colab（クラウドの GPU）で学習し、Google ドライブでデータを受け渡します。
+- **空き容量 3GB くらい**（Python の道具一式で約2GB、モデルが約750MB）。
+  パソコンに GPU は要りません — 学習は Colab、家では対戦するだけです。
+
+#### Google ドライブって何に使うの?（普段使っていない人へ）
+
+学習は**自分のパソコンではなく Google Colab（クラウドの無料 GPU）**で行います。
+そのため「家のパソコンで貯めた対戦記録」を Colab に渡す**受け渡し場所**が必要で、それが Google ドライブです。
+やり方は 2 通りあり、**どちらでも研究はできます**。
+
+**A. Google ドライブのアプリを入れる（Windows / Mac、おすすめ・全自動）**
+
+1. https://www.google.com/drive/download/ から「パソコン版ドライブ」をインストールしてログイン
+2. パソコンに**ドライブのフォルダ**ができます（Windows は `G:\マイドライブ` のようにドライブとして、Mac は
+   `~/Library/CloudStorage/GoogleDrive-<メール>/My Drive`）
+3. セットアップのとき `--drive auto` を付けると、**この場所を自動で見つけて**設定します
+
+これで、対戦が終わるたびに記録がそのフォルダにコピーされ、アプリが勝手にクラウドへ上げてくれます。
+以降、ファイルを手で運ぶ作業はありません。
+
+**B. アプリを入れない（Linux、または入れたくない人）**
+
+記録はいつも `logs/` フォルダに貯まります。ときどき次のコマンドで 1 つの zip にまとめて、
+
+```bash
+python tools/kenkyu/sync_logs.py --zip battles.zip
+```
+
+ブラウザで https://drive.google.com を開き、`PTCG` という名前のフォルダを作って、その zip を
+**ドラッグ＆ドロップ**するだけです（ノートブックが自動で展開します）。
+
+> Colab 側でドライブを使うのにアプリは要りません。ノートブックの最初のセルを実行すると
+> 「ドライブに接続しますか?」と聞かれるので、自分の Google アカウントで許可を押すだけです。
+
+#### Kaggle の鍵（`kaggle.json`）の取り方
+
+対戦エンジンはコンペの配布ファイルなので、ダウンロードに Kaggle のアカウントが要ります。
+
+1. https://www.kaggle.com/competitions/pokemon-tcg-ai-battle を開き、**Rules** タブで
+   「I Understand and Accept」を押す（これをしないとダウンロードが 403 で失敗します）
+2. 右上のアイコン → **Settings** → **API** → **Create New Token** を押すと `kaggle.json` が保存されます
+3. その `kaggle.json` を次の場所に置きます
+
+| OS | 置き場所 |
+|---|---|
+| Windows | `C:\Users\<ユーザー名>\.kaggle\kaggle.json` |
+| macOS / Linux | `~/.kaggle/kaggle.json` |
+
+フォルダが無ければ作ります。Windows は PowerShell で `mkdir $HOME\.kaggle`、
+macOS / Linux は `mkdir -p ~/.kaggle` でできます。
+
+---
 
 ### 1. セットアップ（家のパソコン、1回だけ）
 
-```bash
-git clone https://github.com/yohei-kobashi/pokemon-card-bert.git
-cd pokemon-card-bert
+**自分の OS のところだけ**読んでください。最後に「2試合プレイして動作確認」まで自動でやります。
 
-python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+#### Windows（WSL を使わない場合）
+
+1. **Python を入れる**: https://www.python.org/downloads/windows/ から最新の 3.12 系をダウンロード。
+   インストーラ最初の画面で **「Add python.exe to PATH」に必ずチェック**を入れてから「Install Now」。
+2. **このリポジトリを取る**: Git を入れてもよいですが、入れなくても大丈夫です。
+   [GitHub のページ](https://github.com/yohei-kobashi/pokemon-card-bert)の緑の **Code → Download ZIP**
+   をクリックし、ダウンロードした zip を右クリック →「すべて展開」。
+3. **PowerShell を開く**（スタートメニューで「PowerShell」と入力）。展開したフォルダに移動して、順に実行:
+
+```powershell
+cd $HOME\Downloads\pokemon-card-bert-main    # ZIP を展開した場所（git clone した人は pokemon-card-bert）
+py -m venv venv
+venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
 pip install kaggle huggingface_hub transformers torch
-
-python tools/kenkyu/setup_local.py --drive "<ドライブのフォルダ>"
+python tools\kenkyu\setup_local.py --drive auto
 ```
 
-`<ドライブのフォルダ>` の例:
+- `Activate.ps1` で「このシステムではスクリプトの実行が無効になっている」と出たら、
+  `Set-ExecutionPolicy -Scope Process RemoteSigned` を実行して「Y」を押し、もう一度
+  `venv\Scripts\Activate.ps1`。（コマンドプロンプト派なら `venv\Scripts\activate.bat` でも同じです）
+- 行の先頭に `(venv)` と出ていれば準備 OK の合図です。以降のコマンドも、この `(venv)` が出ている
+  PowerShell で実行します（新しく開いたときは `cd` してから `venv\Scripts\Activate.ps1` をもう一度）。
+- あとで `python play_server.py` を最初に動かしたとき「Windows セキュリティの警告」が出たら
+  **「アクセスを許可する」**（ブラウザと通信するために必要です）。
 
-| OS | 例 |
-|---|---|
-| Windows | `"G:\My Drive\PTCG"` （ドライブレターは Google ドライブアプリの設定で確認） |
-| macOS | `"~/Library/CloudStorage/GoogleDrive-<メールアドレス>/My Drive/PTCG"` |
-| Linux | `"~/PTCG"`（同期アプリが無いので普通のフォルダ。あとで zip で上げます） |
+#### macOS
+
+```bash
+# Python が無ければ https://www.python.org/downloads/macos/ から入れる（または brew install python）
+cd ~/Downloads
+git clone https://github.com/yohei-kobashi/pokemon-card-bert.git
+cd pokemon-card-bert
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install kaggle huggingface_hub transformers torch
+python tools/kenkyu/setup_local.py --drive auto
+```
+
+- **Intel の Mac**（M1/M2/M3 でない Mac）だけ、先に `xcode-select --install` を実行してください。
+  Intel Mac にはエンジンの配布ファイルが無いので、その場でコンパイルします（20〜60秒）。
+- `git` が無いと言われたら、そのまま `xcode-select --install` を実行すると入ります。
+
+#### Linux
+
+```bash
+sudo apt install -y python3-venv python3-pip git g++      # Ubuntu / Debian の場合
+git clone https://github.com/yohei-kobashi/pokemon-card-bert.git
+cd pokemon-card-bert
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install kaggle huggingface_hub transformers
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # GPU が無いなら軽い CPU 版（約200MB）
+python3 tools/kenkyu/setup_local.py --drive ~/PTCG
+```
+
+- Linux には Google ドライブの公式アプリが無いので、`--drive` には**普通のフォルダ**を指定します
+  （例では `~/PTCG`）。記録の受け渡しは 0章の **B**（zip をブラウザからアップロード）で行います。
+- `pip install torch` をそのまま実行すると GPU 用の巨大な版（約2.5GB）が入ります。GPU が無いなら
+  上のように CPU 版を指定するとダウンロードがずっと軽くなります。
+
+#### うまくいったときの表示
+
+```
+PTCG free-research setup  (Windows AMD64, Python 3.12.4)
+[1/3] game library
+  python library: 5 files -> ...\cg-lib\cg
+  binary: cg.dll -> ...\cg-lib\cg\cg.dll
+[2/3] Google Drive
+  --drive auto -> G:\マイドライブ\PTCG
+  Drive mirror: G:\マイドライブ\PTCG\logs (recorded in config.json)
+  engine copy for Colab: G:\マイドライブ\PTCG\cg
+[3/3] verification
+  played 2/2 games to a result [1, 0]
+OK. Start playing:  python play_server.py   then open http://localhost:8000/
+```
 
 このコマンドがやること:
 
 1. コンペから対戦エンジンをダウンロードし、**この機械に合うバイナリ**を置く
    （Windows は `cg.dll`、Linux は `libcg.so`、Apple Silicon Mac は `libcg.dylib`。
-   Intel Mac だけは配布バイナリが無いので、公開されている C++ ソースからコンパイルします
-   ＝ 20〜60秒、`xcode-select --install` が必要）
+   Intel Mac だけは配布バイナリが無いので、公開されている C++ ソースからコンパイルします）
 2. ドライブに `logs/` `models/` を作り、**対戦が終わるたびに記録がドライブへコピーされる**ように
    `config.json` に書き込む。あわせて Colab 用に `cg/`（エンジン一式）を置く
    — **これがあれば Colab 側に Kaggle の鍵は要りません**（`repo.zip` も一緒に置かれますが、
    これは GitHub につながらないときの予備で、ふだんは使いません）
 3. **実際に2試合プレイして動作確認**（ファイルが揃っただけでは成功と言わない）
 
-うまくいくと最後に `OK. Start playing:` と出ます。あとから確認だけしたいときは
-`python tools/kenkyu/setup_local.py --check`。
+あとから確認だけしたいときは `python tools/kenkyu/setup_local.py --check`。
+ドライブの設定を後から変えたいときは `--drive` を付けてもう一度実行するだけです。
 
 ### 2. 対戦してデータを集める
 
+セットアップに使ったのと同じ画面（`(venv)` が出ている PowerShell / ターミナル）で:
+
 ```bash
 python play_server.py
-# ブラウザで http://localhost:8000/  （デッキ選択は http://localhost:8000/manage ）
 ```
 
-`/manage` で次のように選びます。
+次のように表示されたら成功です。ブラウザで **http://localhost:8000/** を開きます。
+
+```
+Human vs AI server running:  http://localhost:8000/
+Deck & Agent manager:        http://localhost:8000/manage
+(You are Player 0. Click options to make your move. Ctrl+C to stop.)
+```
+
+デッキと相手は **http://localhost:8000/manage** で選び、**Save selection** を押してから
+対戦画面（http://localhost:8000/）に戻って **Restart** を押すと、その組み合わせで始まります。
+遊び終わったら、コマンドを実行した画面で **Ctrl + C** を押すと止まります（記録は消えません）。
 
 | 項目 | 値 |
 |---|---|
@@ -126,14 +245,16 @@ python play_server.py
 | ai_agent | `ogerpon_mono` |
 | ai_deck | `ogerpon_mono` |
 
-1試合終わるたびに `logs/` に保存され、同時にドライブへ `.json.gz` でコピーされます。
-Google ドライブアプリが次の試合の間にアップロードしてくれるので、**あとから何かする必要はありません**。
+1試合終わるたびに `logs/` に保存され、同時にドライブのフォルダへ `.json.gz` でコピーされます
+（0章の **A** を選んだ場合）。ドライブのアプリが次の試合の間にアップロードしてくれるので、
+**あとから何かする必要はありません**。ちゃんと増えているかは、エクスプローラー／Finder で
+`マイドライブ\PTCG\logs` を開けば見えます。
 
-- 設定前に遊んだ分をまとめて送る: `python tools/kenkyu/sync_logs.py`
+- 設定する前に遊んだ分をまとめて送る: `python tools/kenkyu/sync_logs.py`
 - 遊んでいる間ずっと同期する: `python tools/kenkyu/sync_logs.py --watch 60`
-- **Linux など同期アプリが無い場合**: `python tools/kenkyu/sync_logs.py --zip battles.zip` で 1 つに
-  まとめ、ブラウザでドライブの `PTCG` フォルダにアップロード。ノートブックに zip を展開するセルが
-  あるので、そのままで大丈夫です
+  （別のウィンドウで動かしっぱなしにします）
+- **0章の B を選んだ人（Linux など）**: `python tools/kenkyu/sync_logs.py --zip battles.zip` で 1 つに
+  まとめ、ブラウザでドライブの `PTCG` フォルダにドラッグ＆ドロップ。ノートブックが自動で展開します
 
 **どのくらい集めればいい?** 1試合 ≒ 40〜50 の判断 ≒ 40 行の学習データ。
 最低 15 試合（約 500 行）、できれば 40 試合以上あると学習らしくなります。
@@ -176,13 +297,22 @@ turns      : 平均 10.6
 （`notebooks/ptcg_kenkyu_colab.ipynb`）。リポジトリもモデルも公開なので、ログインやトークンは要りません
 — Colab が自分でクローンし、モデルは HuggingFace から取ってきます。
 
-**先に「ランタイム → ランタイムのタイプを変更 → GPU」**。無料版では T4 が割り当てられます。
+**Colab をはじめて使う人へ**
+
+1. 開いたら、まず上のメニューの **「ランタイム」→「ランタイムのタイプを変更」→ ハードウェア
+   アクセラレータ「GPU」→ 保存**。無料版では T4 が割り当てられます（それで動きます）。
+2. セルは上から順に、左の ▶ を押す（または **Shift + Enter**）で実行します。
+   最初のセルで「このノートブックに Google ドライブへのアクセスを許可しますか?」と聞かれるので、
+   自分のアカウントを選んで **許可**（これがドライブの受け渡しに必要な唯一のログインです）。
+3. 学習のセルは数分〜十数分かかります。実行中は ▶ がぐるぐる回ります。
+4. 90分ほど放置すると無料版は接続が切れます。切れたら、また上から実行し直せば大丈夫です
+   （`--max-minutes` を入れてあるので、途中で切られてもモデルは保存されます）。
 
 一番上の「設定」セルで指定できるもの:
 
 | 設定 | 意味 |
 |---|---|
-| `DRIVE_DIR` | ドライブのフォルダ（手順1で作ったもの） |
+| `DRIVE_DIR` | ドライブの中のフォルダ。手順1で `--drive auto` を使ったなら **`/content/drive/MyDrive/PTCG` のままで OK**（ドライブの表示が「マイドライブ」でも、Colab から見た名前は `MyDrive` です） |
 | `SINCE` / `UNTIL` | **学習に使う対戦の期間**。空なら全部。集計もこの範囲で出ます |
 | `OPPONENT` | 学習に使う相手デッキ。空なら全部、`ogerpon_mono` ならオーガポン戦だけ |
 | `LEARNING_RATE` | **学習率**。標準 5e-6。大きくすると速く変わるが、元の強さを壊しやすい |
@@ -211,21 +341,36 @@ GPU の切り替えは中身が違います:
 
 ### 5. 学習したモデルで対戦する
 
-ドライブの `models/<名前>` をパソコンにダウンロードしてから:
+まず、学習したモデルをパソコンに用意します。
+
+- **0章の A（ドライブアプリあり）**: 何もしなくても `マイドライブ\PTCG\models\kenkyu_r1` が
+  パソコンから見えます。そのパスをそのまま使えます。
+- **0章の B（ブラウザだけ）**: https://drive.google.com で `PTCG/models/kenkyu_r1` フォルダを
+  右クリック →「ダウンロード」。zip で降ってくるので展開します。展開した中に
+  `config.json` と `model.safetensors` が入っていれば OK です。
 
 **(a) 人間と対戦する**
+
+モデルの場所を `PTCG_MODEL` という環境変数で教えてから、いつもどおりサーバーを起動します。
+
+```powershell
+# Windows (PowerShell) — フォルダのパスは自分のものに置き換えてください
+$env:PTCG_MODEL = "G:\マイドライブ\PTCG\models\kenkyu_r1"
+python play_server.py
+```
 
 ```bash
 # macOS / Linux
 PTCG_MODEL=~/Downloads/kenkyu_r1 python play_server.py
-# Windows (PowerShell)
-$env:PTCG_MODEL="C:\Users\me\Downloads\kenkyu_r1"; python play_server.py
 ```
 
-`/manage` で **ai_agent = `lm_dusknoir`** / **ai_deck = `dragapult_dusknoir`** を選び、
-human_deck は好きなデッキ（`ogerpon_mono` にすれば「自分が育てたAI」と戦えます）。
-`PTCG_MODEL` を指定しなければ公開モデルが自動でダウンロードされます。
-モデルが読めなかったときは、そのままヒューリスティックエンジンとして対戦できます（不戦敗しません）。
+`PTCG_MODEL` を付けずに起動すると、**学習前の公開モデル**が自動でダウンロードされて相手になります
+（初回だけ約750MB）。学習前と学習後で、人間から見た強さがどう変わったか比べてみてください。
+
+`/manage` で **ai_agent = `lm_dusknoir`** / **ai_deck = `dragapult_dusknoir`** を選んで
+**Save selection**。human_deck は好きなデッキ（`ogerpon_mono` にすれば「自分が育てた AI」と
+戦えます）。最初の1手だけモデルの読み込みで数十秒待ちますが、そのあとは 1手 1〜3秒です。
+モデルが読めなかったときは、そのままヒューリスティックエンジンが相手をします（対戦は必ず成立します）。
 
 **(b) エンジンと対戦させて勝率を測る／モデル同士を比べる**
 
@@ -282,6 +427,12 @@ heuristic        ogerpon_mono          400     12     3.0%  1.7 -  5.2      2
 
 | 症状 | 対処 |
 |---|---|
+| `python` が見つからない（Windows） | Python 導入時に「Add python.exe to PATH」を入れ忘れています。入れ直すか、`python` の代わりに `py` を使ってください |
+| `Activate.ps1 ... 実行できません`（Windows） | `Set-ExecutionPolicy -Scope Process RemoteSigned` を実行して「Y」→ もう一度 `venv\Scripts\Activate.ps1`。または cmd で `venv\Scripts\activate.bat` |
+| `pip` は動くのに `python tools\...` でエラー（Windows） | `(venv)` が出ているか確認。新しいウィンドウを開いたら毎回 `cd` してから `venv\Scripts\Activate.ps1` |
+| `--drive auto` で「見つからない」と言われる | パソコン版ドライブが未インストール／未ログインです。入れて同期が始まってから再実行するか、`--drive` に普通のフォルダを指定して 0章の B で運用してください |
+| ドライブのフォルダのパスが分からない | `python tools/kenkyu/setup_local.py`（`--drive` なし）を実行すると、見つかった候補が表示されます |
+| `pip install torch` が終わらない（Linux） | 既定では GPU 用の約2.5GB 版が入ります。`pip install torch --index-url https://download.pytorch.org/whl/cpu` で CPU 版（約200MB）に |
 | `ModuleNotFoundError: No module named 'cg'` | `python tools/kenkyu/setup_local.py` を実行（エンジン未設置） |
 | kaggle が 401 / 403 | コンペのページでルールに同意したか、`kaggle.json` の場所を確認 |
 | Intel Mac でビルドに失敗 | `xcode-select --install` を実行してから `--build` |

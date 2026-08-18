@@ -18,7 +18,8 @@ with clang++ (~20 s). --build forces that path anywhere.
 
     python tools/kenkyu/setup_local.py                    # fetch what is missing + verify
     python tools/kenkyu/setup_local.py --from-dir D:/cg   # copy a cg/ folder you already have
-    python tools/kenkyu/setup_local.py --drive "G:/My Drive/PTCG"   # + set up Drive mirroring
+    python tools/kenkyu/setup_local.py --drive auto        # + Drive (found automatically)
+    python tools/kenkyu/setup_local.py --drive "G:/My Drive/PTCG"   # + Drive (explicit path)
     python tools/kenkyu/setup_local.py --check            # verify only
 """
 import argparse
@@ -31,7 +32,7 @@ import sys
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import ROOT  # noqa: E402
+from common import ROOT, drive_candidates  # noqa: E402
 
 COMP = "pokemon-tcg-ai-battle"
 CG_DIR = os.path.join(ROOT, "cg-lib", "cg")
@@ -217,6 +218,49 @@ def export_drive(drive, api_getter):
     say("  engine copy for Colab: %s" % dest)
 
 
+def resolve_drive_arg(arg):
+    """--drive "<path>" | --drive auto | "" -> the folder to use (or "").
+
+    "auto" and a wrong path are the two ways a first-time user gets stuck here, so both are
+    handled explicitly: auto picks the Drive this machine actually has, and a path whose
+    PARENT does not exist is rejected instead of silently creating a stray folder that Drive
+    will never sync (a mistyped drive letter otherwise looks like success until the notebook
+    finds no games)."""
+    if not arg:
+        return ""
+    if arg.strip().lower() == "auto":
+        found = drive_candidates()
+        if not found:
+            sys.exit("--drive auto found no Google Drive folder on this machine.\n"
+                     + drive_help())
+        chosen = os.path.join(found[0], "PTCG")
+        say("  --drive auto -> %s" % chosen)
+        return chosen
+    arg = os.path.expanduser(arg)
+    parent = os.path.dirname(os.path.abspath(arg))
+    if not os.path.isdir(parent):
+        sys.exit("--drive %r: the folder %r does not exist.\n%s" % (arg, parent, drive_help()))
+    return arg
+
+
+def drive_help():
+    """What to tell someone who has never used Drive on this machine."""
+    found = drive_candidates()
+    if found:
+        return ("  This machine has:\n"
+                + "".join("    %s\n" % f for f in found)
+                + "  Use one of those, e.g.:  --drive \"%s\"\n"
+                  % os.path.join(found[0], "PTCG"))
+    if platform.system() == "Linux":
+        return ("  Linux has no official Google Drive app. Point --drive at any local folder\n"
+                "  (e.g. --drive ~/PTCG) and upload it later with:\n"
+                "    python tools/kenkyu/sync_logs.py --zip battles.zip\n")
+    return ("  Google Drive for desktop does not seem to be installed/running.\n"
+            "  Install it from https://www.google.com/drive/download/ , sign in, then re-run\n"
+            "  with --drive auto. Or skip Drive for now: the games are always saved to logs/\n"
+            "  and can be zipped later with tools/kenkyu/sync_logs.py --zip.\n")
+
+
 def export_repo(drive):
     """Snapshot the repo into Drive as repo.zip (~3 MB).
 
@@ -262,8 +306,9 @@ def main():
                     "(e.g. the one this kit exported to Google Drive)")
     ap.add_argument("--build", action="store_true", help="compile the engine from source even if "
                     "a prebuilt binary exists")
-    ap.add_argument("--drive", default="", help="Google Drive folder for this research; logs and "
-                    "models get subfolders and battles mirror there automatically")
+    ap.add_argument("--drive", default="", help="Google Drive folder for this research (logs "
+                    "and models get subfolders, and battles mirror there automatically). "
+                    "Pass 'auto' to use whichever Drive folder this machine has.")
     ap.add_argument("--no-export", action="store_true", help="--drive: do not copy the game "
                     "library and a repo snapshot into Drive (Colab then needs its own "
                     "kaggle.json and a public GitHub repo)")
@@ -272,7 +317,7 @@ def main():
     a = ap.parse_args()
     # "~/Google Drive/..." reaches here unexpanded when the caller quoted it (and the docs tell
     # them to quote it, because these paths contain spaces).
-    a.drive = os.path.expanduser(a.drive) if a.drive else ""
+    a.drive = resolve_drive_arg(a.drive)
     a.from_dir = os.path.expanduser(a.from_dir) if a.from_dir else ""
 
     say("PTCG free-research setup  (%s %s, Python %s)"
@@ -291,7 +336,8 @@ def main():
                 export_drive(a.drive, kaggle_api)
                 export_repo(a.drive)
         else:
-            say("[2/3] Google Drive: skipped (pass --drive to set it up)")
+            say("[2/3] Google Drive: not set up yet")
+            say(drive_help().rstrip("\n"))
     say("[3/3] verification")
     if not verify(a.games):
         sys.exit("verification FAILED -- the engine did not play a full game")

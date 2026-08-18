@@ -12,6 +12,17 @@ import os
 import sys
 from datetime import datetime, timedelta
 
+if os.name == "nt":
+    # A Windows console runs on the system code page, and these scripts print Japanese. On a
+    # non-Japanese Windows that raises UnicodeEncodeError mid-report and loses the numbers;
+    # errors="replace" degrades to "?" instead. The encoding itself is left alone -- forcing
+    # UTF-8 onto a cp932 console produces mojibake rather than text.
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 for _p in (ROOT, os.path.join(ROOT, "cg-lib"), os.path.join(ROOT, "tools")):
     if _p not in sys.path:
@@ -141,20 +152,40 @@ def decisions_of(log, seat=0):
 
 
 def drive_candidates():
-    """Likely Google Drive roots on this machine, best first.
+    """Every Google Drive folder we can find on this machine, best first.
 
-    Drive for desktop mounts as G:\\My Drive (Windows), ~/Google Drive/My Drive (macOS),
-    /content/drive/MyDrive (Colab). Linux has no official client, so a manual sync folder
-    is the fallback -- sync_logs.py --zip covers that case."""
+    Where Drive for desktop puts "My Drive" depends on the OS, the UI language and the
+    version, and a beginner has no reason to know which of these applies to them:
+
+        Windows   G:\\My Drive  (streaming; the letter is chosen at install time)
+                  %USERPROFILE%\\My Drive  (mirroring)
+        macOS     ~/Library/CloudStorage/GoogleDrive-<account>/My Drive
+        older     ~/Google Drive/My Drive
+        Colab     /content/drive/MyDrive
+
+    Japanese installs name the same folder マイドライブ. Rather than ask the user to work
+    out which line applies, setup_local.py globs all of them and prints what it found.
+    Linux has no official client, so an empty result there is normal, not a failure --
+    sync_logs.py --zip covers that case.
+    """
     home = os.path.expanduser("~")
-    cands = [
+    pats = [
+        os.path.join(home, "Library", "CloudStorage", "GoogleDrive-*", "My Drive"),
+        os.path.join(home, "Library", "CloudStorage", "GoogleDrive-*", "マイドライブ"),
         os.path.join(home, "Google Drive", "My Drive"),
         os.path.join(home, "Google Drive", "マイドライブ"),
-        os.path.join(home, "GoogleDrive", "My Drive"),
+        os.path.join(home, "Google ドライブ"),
+        os.path.join(home, "My Drive"),
+        os.path.join(home, "マイドライブ"),
         "/content/drive/MyDrive",
     ]
     if os.name == "nt":
-        for drv in ("G:", "H:", "I:"):
-            cands.append(os.path.join(drv + os.sep, "My Drive"))
-            cands.append(os.path.join(drv + os.sep, "マイドライブ"))
-    return [c for c in cands if os.path.isdir(c)]
+        for drv in "GHIJKL":
+            pats.append(drv + ":\\My Drive")
+            pats.append(drv + ":\\マイドライブ")
+    out = []
+    for p in pats:
+        for hit in sorted(glob.glob(p)):
+            if os.path.isdir(hit) and hit not in out:
+                out.append(hit)
+    return out
