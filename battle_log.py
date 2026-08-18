@@ -14,6 +14,7 @@ e.g.
 - each side shows the agent name and the deck name (per player index).
 """
 
+import gzip
 import importlib
 import json
 import os
@@ -81,4 +82,38 @@ def save_battle(visualize, players, when=None):
     path = os.path.join(LOG_DIR, name)
     with open(path, "w") as f:
         f.write(data)
+    _mirror(path, data, name)
     return path
+
+
+def _mirror_dir():
+    """Second home for finished games: $PTCG_LOG_MIRROR, else config.json play.log_mirror.
+
+    Point it at a Google Drive folder and every battle is uploaded by Drive for desktop
+    while the next one is being played, so a play session needs no export step. config.json
+    is read RAW here rather than through library.load_config: library imports this module,
+    and the reverse import would be a cycle."""
+    d = os.environ.get("PTCG_LOG_MIRROR")
+    if d:
+        return d
+    try:
+        with open(os.environ.get("PLAY_CONFIG", "config.json")) as f:
+            return (json.load(f).get("play") or {}).get("log_mirror") or ""
+    except (OSError, ValueError):
+        return ""
+
+
+def _mirror(path, data, name):
+    """Copy the finished game to the mirror, gzipped (a battle is ~1-3 MB of JSON).
+
+    Never fatal: a game that has just been played must not be lost because a cloud folder
+    was unmounted, so a failure only prints."""
+    d = _mirror_dir()
+    if not d:
+        return
+    try:
+        os.makedirs(d, exist_ok=True)
+        with gzip.open(os.path.join(d, name + ".gz"), "wt", encoding="utf-8") as f:
+            f.write(data)
+    except OSError as e:
+        print(f"[log] mirror to {d} failed: {e}")

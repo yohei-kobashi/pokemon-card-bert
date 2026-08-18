@@ -60,6 +60,12 @@ to the path themselves).
 - `evaluate.py` — round-robin cross-play (multiprocess), writes `evaluations/`.
 - `tune.py` — `diagnose` / `test` for a single deck.
 - `generate_agents.py` — bake `tuning.json` into `agents/<deck>.py` (the "apply tuning" step).
+- `kenkyu/` — the free-research kit, meant for someone who is NOT developing the agent:
+  `setup_local.py` (build the play environment on any OS + Google Drive wiring),
+  `log_stats.py` (summarise collected human games), `sync_logs.py` (mirror them to Drive),
+  `battle_eval.py` (play a trained model vs the heuristic engine and compare models).
+  The training step lives in `notebooks/ptcg_kenkyu_colab.ipynb`; see the README section
+  「自由研究キット」 for the whole flow.
 
 ## Notes
 

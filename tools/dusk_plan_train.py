@@ -25,6 +25,7 @@ import os
 import random
 import statistics as st
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for _p in (ROOT, os.path.join(ROOT, "cg-lib"), os.path.join(ROOT, "tools")):
@@ -44,6 +45,18 @@ def main():
     ap.add_argument("--maxlen", type=int, default=512)
     ap.add_argument("--l2sp", type=float, default=1e-3)
     ap.add_argument("--eval-frac", type=float, default=0.05)
+    ap.add_argument("--precision", default="auto", choices=("auto", "bf16", "fp16", "fp32"),
+                    help="autocast dtype for the forward pass. auto = bf16 where the GPU has it "
+                         "(L4/A100), fp16 on a T4 (Turing has no bf16 and silently falls back to "
+                         "fp32 emulation, i.e. ~3x slower and out of memory sooner), fp32 on CPU. "
+                         "fp16 additionally needs loss scaling, which is wired up below -- the "
+                         "gradients of this loss run around 1e-4 and underflow to zero without it. "
+                         "The WEIGHTS stay fp32 in every mode: the checkpoints are saved bf16, "
+                         "where an AdamW step at lr 5e-6 is smaller than one ulp and rounds away.")
+    ap.add_argument("--max-minutes", type=float, default=0.0,
+                    help="stop training after N minutes and save what is there. A free Colab "
+                         "session can be reclaimed mid-run; a checkpoint that exists is worth "
+                         "more than the last 10%% of an epoch that does not.")
     ap.add_argument("--probe", action="store_true",
                     help="overfit 300 rows, no anchor: a trainer that cannot collapse this "
                          "must not spend a round")
@@ -84,6 +97,17 @@ def main():
     model = AutoModelForSequenceClassification.from_pretrained(
         a.model, dtype=torch.float32).to(dev)
     model.train()
+    if a.precision == "auto":
+        amp = ("bf16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+               else "fp16" if torch.cuda.is_available() else "fp32")
+    else:
+        amp = a.precision
+    amp_dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[amp]
+    use_amp = (dev == "cuda" and amp != "fp32")
+    scaler = torch.amp.GradScaler("cuda", enabled=(use_amp and amp == "fp16"))
+    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
+    print("[precision] %s on %s (loss scaling %s)"
+          % (amp, gpu, "on" if scaler.is_enabled() else "off"), flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=0.0)
     ref = None
     if a.l2sp > 0:
@@ -94,7 +118,7 @@ def main():
     def scores(r):
         enc = tok([r["prompt"]] * len(r["cands"]), r["cands"], return_tensors="pt",
                   padding=True, truncation=True, max_length=a.maxlen).to(dev)
-        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=(dev == "cuda")):
+        with torch.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
             logits = model(**enc).logits.squeeze(-1)
         return logits.float()
 
@@ -119,6 +143,7 @@ def main():
         print("[probe] train-set conformance before: %.1f%%" % (100 * acc(tr[:200])), flush=True)
 
     losses, step, n_oom = [], 0, 0
+    t_start = time.time()
     n_steps = int(len(tr) * a.epochs)
     for i in range(n_steps):
         r = tr[i % len(tr)]
@@ -140,10 +165,15 @@ def main():
         tgt = tgt / tgt.sum()
         mass = (tgt * lp).sum()
         loss = -mass
-        (loss / a.accum).backward()
-        losses.append(float(-mass))
+        scaler.scale(loss / a.accum).backward() if scaler.is_enabled() \
+            else (loss / a.accum).backward()
+        losses.append(-float(mass.detach()))
         step += 1
         if step % a.accum == 0:
+            if scaler.is_enabled():
+                # Unscale BEFORE the anchor and the clip: both are absolute-size operations and
+                # would otherwise be applied to gradients still multiplied by the loss scale.
+                scaler.unscale_(opt)
             if ref is not None:
                 # L2-SP applied as a GRADIENT, not as a term in the loss. Building
                 #     pen = sum_n ((p_n - ref_n) ** 2).sum()
@@ -159,7 +189,16 @@ def main():
                         if p_.grad is not None and n_ in ref:
                             p_.grad.add_(p_.detach() - ref[n_], alpha=2.0 * a.l2sp)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            opt.step(); opt.zero_grad()
+            if scaler.is_enabled():
+                scaler.step(opt); scaler.update()
+            else:
+                opt.step()
+            opt.zero_grad()
+        if a.max_minutes and step % 10 == 0 and \
+                (time.time() - t_start) > a.max_minutes * 60:
+            print("[stop] --max-minutes %.1f reached at step %d" % (a.max_minutes, step),
+                  flush=True)
+            break
         if step % 500 == 0:
             pk = torch.cuda.max_memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0
             print("  step %d  -log P(plan) %.4f  peak %.2f GiB%s"

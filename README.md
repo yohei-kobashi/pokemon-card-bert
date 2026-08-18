@@ -30,6 +30,250 @@ cardfirst-v40 のベース LoRA と `domain_embeddings.pt` を先に適用する
 学習インフラの実体は `tools/instance/`（両Vastインスタンスの全スクリプトのアーカイブ）、
 人間対局の一次データは `human_games/` を参照。
 
+## 自由研究キット: 人と対戦して集めたデータでモデルを追加学習する
+
+**研究テーマ: play_server でヒューリスティックエンジンとたくさん対戦して記録をため、Google Colab で
+`ptcg-dusknoir-deberta-reranker` に追加学習して、ogerpon_mono（オーガポン）への勝率をどこまで上げられるか。**
+
+ogerpon_mono はこのプロジェクトが最後まで攻略できなかった相手です。この環境で実際に測ると、
+`dragapult_dusknoir` を**ヒューリスティックエンジンだけで**動かしたときの勝率は 400 試合で **3.0%**
+（12勝、95% CI 1.7 - 5.2）しかありません。つまり**伸びしろが大きく、上がったかどうかが数字ではっきり出る**
+題材です（同じ相手・同じ測り方で `crustle_stall` は 100 試合 92.0% なので、測り方の問題ではなく
+このデッキとこの相手の相性です）。
+
+```
+ 家のPC                        Google ドライブ                Colab (無料GPUでOK)
+ ─────────────                 ────────────────               ──────────────────
+ play_server で対戦   ──────▶  logs/  (自動でコピー)  ──────▶  集計 → 学習データ → 追加学習
+        ▲                      models/ ◀──────────────────────  学習ずみモデルを保存
+        │                          │
+        └──── モデルをダウンロード ─┘ → 人と対戦 / エンジンと対戦して勝率を比較
+```
+
+| 使うもの | 何をするか |
+|---|---|
+| `tools/kenkyu/setup_local.py` | Windows / macOS / Linux で対戦環境をつくる（＋ドライブ連携） |
+| `play_server.py` | ブラウザで人 vs AI の対戦。終わるたびにドライブへ自動保存 |
+| `tools/kenkyu/sync_logs.py` | 過去の記録をまとめてドライブへ／zip にして手動アップ |
+| `tools/kenkyu/log_stats.py` | **学習前の集計**（試合数・相手別勝率・日付別勝率） |
+| `notebooks/ptcg_kenkyu_colab.ipynb` | Colab で追加学習（期間・学習率・GPU を指定） |
+| `agents/lm_dusknoir.py` | 学習したモデルを **人間の対戦相手**として動かす |
+| `tools/kenkyu/battle_eval.py` | エンジンと対戦させて勝率を測り、**モデル同士を比較** |
+
+---
+
+### 0. 用意するもの
+
+- **Python 3.9 以上**（3.11 か 3.12 がおすすめ）
+- **Kaggle アカウント** … 対戦エンジン（`cg`）はコンペの配布物で、このリポジトリには入っていません。
+  [コンペのページ](https://www.kaggle.com/competitions/pokemon-tcg-ai-battle)でルールに同意し、
+  アカウントページの「Create New Token」で `kaggle.json` を保存して、
+  `~/.kaggle/kaggle.json`（Windows は `%USERPROFILE%\.kaggle\kaggle.json`）に置きます。
+- **Google アカウント**（ドライブ ＋ Colab）
+- Google ドライブのパソコン用アプリ（Windows / Mac）。Linux には公式アプリが無いので、
+  その場合は zip にして手動アップロードします（後述）。
+
+### 1. セットアップ（家のパソコン、1回だけ）
+
+```bash
+git clone https://github.com/yohei-kobashi/pokemon-card-bert.git
+cd pokemon-card-bert
+
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install kaggle huggingface_hub transformers torch
+
+python tools/kenkyu/setup_local.py --drive "<ドライブのフォルダ>"
+```
+
+`<ドライブのフォルダ>` の例:
+
+| OS | 例 |
+|---|---|
+| Windows | `"G:\My Drive\PTCG"` （ドライブレターは Google ドライブアプリの設定で確認） |
+| macOS | `"~/Library/CloudStorage/GoogleDrive-<メールアドレス>/My Drive/PTCG"` |
+| Linux | `"~/PTCG"`（同期アプリが無いので普通のフォルダ。あとで zip で上げます） |
+
+このコマンドがやること:
+
+1. コンペから対戦エンジンをダウンロードし、**この機械に合うバイナリ**を置く
+   （Windows は `cg.dll`、Linux は `libcg.so`、Apple Silicon Mac は `libcg.dylib`。
+   Intel Mac だけは配布バイナリが無いので、公開されている C++ ソースからコンパイルします
+   ＝ 20〜60秒、`xcode-select --install` が必要）
+2. ドライブに `logs/` `models/` `cg/` を作り、**対戦が終わるたびに記録がドライブへコピーされる**ように
+   `config.json` に書き込む（`cg/` は Colab 用のコピー。これがあれば Colab に Kaggle の鍵は要りません）
+3. **実際に2試合プレイして動作確認**（ファイルが揃っただけでは成功と言わない）
+
+うまくいくと最後に `OK. Start playing:` と出ます。あとから確認だけしたいときは
+`python tools/kenkyu/setup_local.py --check`。
+
+### 2. 対戦してデータを集める
+
+```bash
+python play_server.py
+# ブラウザで http://localhost:8000/  （デッキ選択は http://localhost:8000/manage ）
+```
+
+`/manage` で次のように選びます。
+
+| 項目 | 値 |
+|---|---|
+| human_deck | `dragapult_dusknoir`（自分が使うデッキ） |
+| ai_agent | `ogerpon_mono` |
+| ai_deck | `ogerpon_mono` |
+
+1試合終わるたびに `logs/` に保存され、同時にドライブへ `.json.gz` でコピーされます。
+Google ドライブアプリが次の試合の間にアップロードしてくれるので、**あとから何かする必要はありません**。
+
+- 設定前に遊んだ分をまとめて送る: `python tools/kenkyu/sync_logs.py`
+- 遊んでいる間ずっと同期する: `python tools/kenkyu/sync_logs.py --watch 60`
+- **Linux など同期アプリが無い場合**: `python tools/kenkyu/sync_logs.py --zip battles.zip` で 1 つに
+  まとめ、ブラウザでドライブの `PTCG` フォルダにアップロード。ノートブックに zip を展開するセルが
+  あるので、そのままで大丈夫です
+
+**どのくらい集めればいい?** 1試合 ≒ 40〜50 の判断 ≒ 40 行の学習データ。
+最低 15 試合（約 500 行）、できれば 40 試合以上あると学習らしくなります。
+
+> 相手を変えて遊ぶと、その相手との記録になります。学習データを作るときは
+> `human-<自分のデッキ名>` のファイルだけが選ばれるので、**自分が違うデッキを使った試合**
+> （例: 学習ずみモデルと対戦したとき）は混ざりません。
+
+### 3. 学習前に集計する
+
+```bash
+python tools/kenkyu/log_stats.py                          # 全部
+python tools/kenkyu/log_stats.py --since 2026-08-16       # 期間を切る
+python tools/kenkyu/log_stats.py --logs "<ドライブ>/logs" --json stats.json
+```
+
+```
+=== 対戦履歴の集計 ===
+games      : 37  (2026-08-16 .. 2026-08-17)
+human wins : 28 / 37 = 75.7%
+decisions  : 1803 (学習データの上限, 平均 48.7/game)
+turns      : 平均 10.6
+
+--- 相手デッキ別 ---
+  ogerpon_mono            17 games  10勝  7敗   58.8%    990 decisions
+  mega_abomasnow_sample    8 games   8勝  0敗  100.0%    308 decisions
+...
+--- 日付別 ---
+  2026-08-16   10 games   5勝  5敗   50.0%
+  2026-08-17   27 games  23勝  4敗   85.2%
+```
+
+日付別の勝率は「**自分が上手くなった**」ことを示す大事なデータです。
+上手くなってからの試合だけで学習する（`--since` で切る）とどうなるかは、そのまま研究のテーマになります。
+
+### 4. Colab で追加学習する
+
+[このノートブックを Colab で開く](https://colab.research.google.com/github/yohei-kobashi/pokemon-card-bert/blob/main/notebooks/ptcg_kenkyu_colab.ipynb)
+（`notebooks/ptcg_kenkyu_colab.ipynb`）
+
+**先に「ランタイム → ランタイムのタイプを変更 → GPU」**。無料版では T4 が割り当てられます。
+
+一番上の「設定」セルで指定できるもの:
+
+| 設定 | 意味 |
+|---|---|
+| `DRIVE_DIR` | ドライブのフォルダ（手順1で作ったもの） |
+| `SINCE` / `UNTIL` | **学習に使う対戦の期間**。空なら全部。集計もこの範囲で出ます |
+| `LEARNING_RATE` | **学習率**。標準 5e-6。大きくすると速く変わるが、元の強さを壊しやすい |
+| `EPOCHS` | 同じデータを何周するか（2 くらい） |
+| `L2SP` | 元のモデルからどれだけ離れてよいか。大きいほど元のまま（標準 1e-3） |
+| `GPU_PROFILE` | `auto` / `T4` / `L4/A100` / `CPU` |
+| `MODEL_NAME` | 保存する名前（ドライブの `models/<名前>`） |
+
+GPU の切り替えは中身が違います:
+
+| GPU | 精度 | なぜ |
+|---|---|---|
+| T4（無料版） | fp16 ＋ ロススケーリング | T4（Turing）に bf16 の演算器が無く、bf16 を選ぶとエミュレーションで遅くなるだけ。fp16 は勾配（1e-4 くらい）がそのままだと 0 に潰れるので、ロススケーリングを自動で入れます |
+| L4 / A100 | bf16 | 数値の範囲が広く、ロススケーリング無しで安定 |
+| CPU | fp32 | GPU が無いときの最後の手段（とても遅い） |
+
+どのモードでも**重みは fp32 のまま**です（bf16 のまま学習すると、学習率 5e-6 の更新が
+まるめられて消えてしまい、モデルが動かなくなります — このプロジェクトが実際に踏んだ罠です）。
+
+`--max-minutes` を付けてあるので、無料版のセッションが切れそうな時間で打ち切っても
+**そこまでの結果は必ず保存**されます。
+
+学習が終わると `plan-conformance before / after` が出ます。これは
+「その場面で人間と同じ手を選べた割合」で、上がっていれば人間のプレイを覚えたということ。
+**ただし勝率が上がったという意味ではありません**（次で確かめます）。
+
+### 5. 学習したモデルで対戦する
+
+ドライブの `models/<名前>` をパソコンにダウンロードしてから:
+
+**(a) 人間と対戦する**
+
+```bash
+# macOS / Linux
+PTCG_MODEL=~/Downloads/kenkyu_r1 python play_server.py
+# Windows (PowerShell)
+$env:PTCG_MODEL="C:\Users\me\Downloads\kenkyu_r1"; python play_server.py
+```
+
+`/manage` で **ai_agent = `lm_dusknoir`** / **ai_deck = `dragapult_dusknoir`** を選び、
+human_deck は好きなデッキ（`ogerpon_mono` にすれば「自分が育てたAI」と戦えます）。
+`PTCG_MODEL` を指定しなければ公開モデルが自動でダウンロードされます。
+モデルが読めなかったときは、そのままヒューリスティックエンジンとして対戦できます（不戦敗しません）。
+
+**(b) エンジンと対戦させて勝率を測る／モデル同士を比べる**
+
+```bash
+python tools/kenkyu/battle_eval.py --model engine --games 200 --tag heuristic   # モデル無し
+python tools/kenkyu/battle_eval.py --model base   --games 40  --tag base        # 学習前（初回は約750MBのダウンロード）
+python tools/kenkyu/battle_eval.py --model ~/Downloads/kenkyu_r1 --games 40 --tag r1
+python tools/kenkyu/battle_eval.py --compare --baseline base
+```
+
+```
+=== モデル性能比較 (同じ相手・同じデッキ・先攻後攻を交互) ===
+tag              opponent            games   wins     win% 95% CI           runs
+r1               ogerpon_mono           40     14    35.0% 21.8 - 50.9      1
+base             ogerpon_mono           40     10    25.0% 14.2 - 40.2      1
+heuristic        ogerpon_mono          200     57    28.5% 22.6 - 35.2      1
+
+--- base (40 games, 25.0%) との差 ---
+  r1                +10.0pt   p=0.313   差は誤差の範囲
+```
+
+- 結果は 1 つのファイル（`evaluations/kenkyu_results.json`、Colab では `--results` でドライブ）に
+  たまっていくので、**何個モデルを作っても後から比べられます**。同じ `--tag` で追加すると合算されます。
+- 速さの実測（多コアのデスクトップ CPU）: 1判断 約0.7秒、1試合 10〜90秒。
+  ノートパソコンではもっとかかるので、**試合数を多く回すときは Colab の GPU** が楽です
+  （ノートブックの手順7がそれをやります）。エンジン同士（`--model engine`）は 1試合 0.1 秒未満なので、
+  ベースラインは 200〜400 試合まわして構いません。
+
+### 6. 結果の読み方（ここが研究の本体）
+
+- **40試合では ±15ポイントもぶれます。** 表の「95% CI」が重なっている2つは、まだ差があるとは言えません。
+  ちゃんと差を見たいなら 200 試合以上。「差がなかった」も立派な結果です。
+- **ベースラインを3つ**とるのが大事です:
+  ①モデル無し（ヒューリスティック）②学習まえの公開モデル ③学習したモデル。
+  ①より②が低いこともあります（このプロジェクトの本番でも実際にありました）。
+- **人間のマネが上手くなること ≠ 強くなること。**
+  このプロジェクトでは、人が書いた作戦への一致率を 61.5% → 93.6% まで上げたとき、
+  勝率は 18.9% → 5.2% に**下がりました**。だから一致率だけでなく必ず勝率を測ります。
+- 学習して弱くなったら、学習率を下げる（1e-6）・`L2SP` を上げる（1e-2）・データを増やす、
+  の順で試すと原因を切り分けられます。
+
+### 7. 困ったとき
+
+| 症状 | 対処 |
+|---|---|
+| `ModuleNotFoundError: No module named 'cg'` | `python tools/kenkyu/setup_local.py` を実行（エンジン未設置） |
+| kaggle が 401 / 403 | コンペのページでルールに同意したか、`kaggle.json` の場所を確認 |
+| Intel Mac でビルドに失敗 | `xcode-select --install` を実行してから `--build` |
+| ドライブにログが増えない | `config.json` の `play.log_mirror` を確認。`tools/kenkyu/sync_logs.py` で手動同期 |
+| Colab で `torch.cuda not available` | ランタイムのタイプを GPU に変更してから、上から実行し直す |
+| T4 で out of memory | 設定セルの `GPU_PROFILE` を `T4` に固定（`--maxlen 448`）。1行だけ大きすぎる場合は自動でスキップされます |
+| 対戦が遅い | 判断の数だけモデルを動かすので CPU では時間がかかります。評価は Colab の GPU で |
+
+---
+
 Kaggle「pokemon-tcg-ai-battle」向けの対戦エージェント開発リポジトリ。ルールベースのヒューリスティックエンジン（`agents/engine_v2.py`）と、その自己対戦データで学習する軽量な学習エージェント（提出用）を開発している。デッキ一覧・引用元は本ファイル末尾を参照。
 
 ## ヒューリスティックエンジン（`agents/engine_v2.py`）

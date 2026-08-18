@@ -15,9 +15,10 @@ search_begin_input blob, so hidden dmg:+N facts are absent -- serialize degrades
 
     python3 tools/human_rows.py --logs 'logs/2026081*Human*human-dragapult_dusknoir*.json' \
         --deck dragapult_dusknoir --out /tmp/human_rows.jsonl.gz
+    python3 tools/human_rows.py --logs logs --since 2026-08-16 --until 2026-08-18 \
+        --out /tmp/human_rows.jsonl.gz          # a date range instead of a hand-written glob
 """
 import argparse
-import glob
 import gzip
 import json
 import os
@@ -62,7 +63,11 @@ def to_kaggle_obs(e):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--logs", required=True, help="glob of HumanvAI visualize json logs")
+    ap.add_argument("--logs", nargs="+", default=["logs"],
+                    help="dirs or globs of HumanvAI visualize logs (.json / .json.gz)")
+    ap.add_argument("--since", default="", help="only games from this date, e.g. 2026-08-16. "
+                    "The date comes from the FILENAME stamp, so no file is opened to filter")
+    ap.add_argument("--until", default="", help="only games up to this date (inclusive)")
     ap.add_argument("--deck", default="dragapult_dusknoir", help="the HUMAN's deck name")
     ap.add_argument("--seat", type=int, default=0, help="human's player index in the log")
     ap.add_argument("--w-win", type=float, default=0.85,
@@ -78,21 +83,23 @@ def main():
     from lm.actions import encode_option
     from lm.action_token import canon_key, slot_map_from_state
     from valued_to_sft import menu_of
+    from kenkyu.common import list_logs, open_log, opponent_of, parse_date
 
     dids = [int(x) for x in open(library.deck_path(a.deck)) if x.strip()]
     fmt = dict(rl_config.DUSK_FMT)
 
-    files = sorted(glob.glob(a.logs))
+    # Same selector the aggregator (tools/kenkyu/log_stats.py) uses, so the rows built here
+    # always correspond to the games the研究 just reported statistics for.
+    files = list_logs(a.logs, parse_date(a.since), parse_date(a.until, end=True),
+                      human_deck="human-" + a.deck)
     if not files:
-        raise SystemExit("no logs matched %r" % a.logs)
+        raise SystemExit("no logs matched %r (since=%r until=%r)" % (a.logs, a.since, a.until))
 
     st = {"games": 0, "wins": 0, "dec": 0, "multi": 0, "no_menu": 0,
           "menu_match": 0, "trivial": 0, "render_err": 0, "rows": 0}
     with gzip.open(a.out, "wt", encoding="utf-8") as out:
         for f in files:
-            if "_vs_agent-" in f:
-                continue          # the random-stub era; not a real opponent
-            d = json.load(open(f))
+            d = open_log(f)          # .json or .json.gz
             st["games"] += 1
             # winner: the Result log entry (result == player index of the winner)
             res = None
@@ -106,8 +113,7 @@ def main():
             won = (res == a.seat)
             st["wins"] += 1 if won else 0
             w = a.w_win if won else a.w_loss
-            opp = next((k for k in ("ogerpon", "abomasnow", "alakazam", "marnie")
-                        if k in f), "?")
+            opp = opponent_of(f)
             for e in d:
                 cur = e.get("current") or {}
                 if cur.get("yourIndex") != a.seat:
