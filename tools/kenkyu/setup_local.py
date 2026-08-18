@@ -217,6 +217,22 @@ def export_drive(drive, api_getter):
     say("  engine copy for Colab: %s" % dest)
 
 
+def export_repo(drive):
+    """Snapshot the repo into Drive as repo.zip (~3 MB).
+
+    The Colab notebook clones from GitHub, which only works while the repository is public.
+    A private repo would leave the notebook unable to start at all, so the setup that has the
+    working copy in front of it also leaves a copy where Colab can reach it."""
+    out = os.path.join(drive, "repo.zip")
+    try:
+        subprocess.run(["git", "archive", "--format=zip", "-o", out, "HEAD"],
+                       cwd=ROOT, check=True)
+    except (OSError, subprocess.CalledProcessError) as e:
+        say("  repo snapshot skipped (%s)" % e)
+        return
+    say("  repo snapshot for Colab: %s (%.1f MB)" % (out, os.path.getsize(out) / 1e6))
+
+
 def setup_drive(drive):
     """Create the Drive folders and record the mirror in config.json.
 
@@ -248,7 +264,8 @@ def main():
     ap.add_argument("--drive", default="", help="Google Drive folder for this research; logs and "
                     "models get subfolders and battles mirror there automatically")
     ap.add_argument("--no-export", action="store_true", help="--drive: do not copy the game "
-                    "library into Drive (Colab then needs its own kaggle.json)")
+                    "library and a repo snapshot into Drive (Colab then needs its own "
+                    "kaggle.json and a public GitHub repo)")
     ap.add_argument("--check", action="store_true", help="verify an existing setup, change nothing")
     ap.add_argument("--games", type=int, default=2, help="verification games")
     a = ap.parse_args()
@@ -271,6 +288,7 @@ def main():
             setup_drive(a.drive)
             if not a.no_export:
                 export_drive(a.drive, kaggle_api)
+                export_repo(a.drive)
         else:
             say("[2/3] Google Drive: skipped (pass --drive to set it up)")
     say("[3/3] verification")

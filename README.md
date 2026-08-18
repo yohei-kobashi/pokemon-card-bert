@@ -101,7 +101,8 @@ python tools/kenkyu/setup_local.py --drive "<ドライブのフォルダ>"
    Intel Mac だけは配布バイナリが無いので、公開されている C++ ソースからコンパイルします
    ＝ 20〜60秒、`xcode-select --install` が必要）
 2. ドライブに `logs/` `models/` `cg/` を作り、**対戦が終わるたびに記録がドライブへコピーされる**ように
-   `config.json` に書き込む（`cg/` は Colab 用のコピー。これがあれば Colab に Kaggle の鍵は要りません）
+   `config.json` に書き込む。あわせて Colab 用に **`cg/`（エンジン一式）** と **`repo.zip`（このリポジトリの
+   スナップショット、約3MB）** を置く（これがあれば Colab に Kaggle の鍵も GitHub の公開設定も要りません）
 3. **実際に2試合プレイして動作確認**（ファイルが揃っただけでは成功と言わない）
 
 うまくいくと最後に `OK. Start playing:` と出ます。あとから確認だけしたいときは
@@ -168,8 +169,13 @@ turns      : 平均 10.6
 
 ### 4. Colab で追加学習する
 
-[このノートブックを Colab で開く](https://colab.research.google.com/github/yohei-kobashi/pokemon-card-bert/blob/main/notebooks/ptcg_kenkyu_colab.ipynb)
-（`notebooks/ptcg_kenkyu_colab.ipynb`）
+`notebooks/ptcg_kenkyu_colab.ipynb` を Colab で開きます。
+
+- GitHub リポジトリが**公開**なら:
+  [このリンク](https://colab.research.google.com/github/yohei-kobashi/pokemon-card-bert/blob/main/notebooks/ptcg_kenkyu_colab.ipynb)
+- **非公開**なら: Colab の「ファイル → ノートブックをアップロード」で
+  `notebooks/ptcg_kenkyu_colab.ipynb` を選ぶ（リポジトリ本体は手順1でドライブに置いた
+  `repo.zip` から自動で展開されます）
 
 **先に「ランタイム → ランタイムのタイプを変更 → GPU」**。無料版では T4 が割り当てられます。
 
@@ -284,6 +290,7 @@ heuristic        ogerpon_mono          400     12     3.0%  1.7 -  5.2      2
 | Colab で `torch.cuda not available` | ランタイムのタイプを GPU に変更してから、上から実行し直す |
 | T4 で out of memory | 設定セルの `GPU_PROFILE` を `T4` に固定（`--maxlen 448`）。1行だけ大きすぎる場合は自動でスキップされます |
 | 対戦が遅い | 判断の数だけモデルを動かすので CPU では時間がかかります。評価は Colab の GPU で |
+| Colab のツールが古い（非公開リポジトリのとき） | `repo.zip` は手順1の時点のスナップショットです。家のPCで `git pull` したら `setup_local.py --drive ...` を実行し直してください |
 
 ---
 
