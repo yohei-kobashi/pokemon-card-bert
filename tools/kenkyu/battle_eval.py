@@ -128,7 +128,7 @@ def compare(baseline=None, opp=None):
         print("  %-16s %+6.1fpt   p=%.3f   %s" % (tag, d, pv, verdict))
 
 
-def build_agent(spec, device, wrap, max_len, deck_name):
+def build_agent(spec, device, wrap, max_len, deck_name, threads=0):
     """spec: 'engine' | 'base' | a checkpoint dir | a HuggingFace repo id.
 
     ``deck_name`` must be the deck actually dealt to this seat: make_pilot builds engine_v2
@@ -143,7 +143,7 @@ def build_agent(spec, device, wrap, max_len, deck_name):
         return make_pilot(model=None, deck_name=deck_name), None
     from lm.hf_scorer import HfRerankerScorer, resolve_model
     path = resolve_model(BASE_REPO if spec == "base" else spec)
-    model = HfRerankerScorer(path, device=device, max_len=max_len)
+    model = HfRerankerScorer(path, device=device, max_len=max_len, threads=threads)
     return make_pilot(model=model, deck_name=deck_name, wrap=wrap), model
 
 
@@ -154,12 +154,16 @@ def main():
                     "one), a local checkpoint dir, or a HuggingFace repo id")
     ap.add_argument("--tag", default="", help="name for this model in the comparison table "
                     "(default: derived from --model)")
-    ap.add_argument("--opp", default="ogerpon_mono", help="opponent deck (its heuristic agent "
-                    "pilots it)")
+    ap.add_argument("--opp", default="", help="opponent deck, piloted by its heuristic agent "
+                    "(default ogerpon_mono). With --compare it FILTERS the table instead, and "
+                    "leaving it out then shows every opponent")
     ap.add_argument("--deck", default="dragapult_dusknoir", help="the deck OUR model pilots")
     ap.add_argument("--games", type=int, default=40)
     ap.add_argument("--device", default="auto", help="auto | cpu | cuda")
     ap.add_argument("--max-len", type=int, default=512)
+    ap.add_argument("--threads", type=int, default=0, help="cap the CPU threads torch uses "
+                    "(0 = torch's default = every core). Set it when running two evaluations "
+                    "at once, or the two fight over the same cores and both crawl")
     ap.add_argument("--no-wrap", dest="wrap", action="store_false",
                     help="drop the hand-authored plan rules (measures a DIFFERENT pilot)")
     ap.add_argument("--compare", action="store_true", help="print the table and exit")
@@ -174,8 +178,9 @@ def main():
         RESULTS = os.path.abspath(os.path.expanduser(a.results))
 
     if a.compare:
-        compare(a.baseline or None, a.opp)
+        compare(a.baseline or None, a.opp or None)
         return
+    a.opp = a.opp or "ogerpon_mono"
 
     os.chdir(ROOT)                       # deck/agent paths are relative to the repo
     import arena
@@ -184,7 +189,7 @@ def main():
 
     tag = a.tag or ("heuristic" if a.model == "engine"
                     else "base" if a.model == "base" else os.path.basename(a.model.rstrip("/")))
-    agent, model = build_agent(a.model, a.device, a.wrap, a.max_len, a.deck)
+    agent, model = build_agent(a.model, a.device, a.wrap, a.max_len, a.deck, a.threads)
     mine = library.read_deck(a.deck)
     theirs = library.read_deck(a.opp)
     opp_agent = load_agent(a.opp)

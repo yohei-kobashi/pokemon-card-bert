@@ -63,7 +63,7 @@ def open_log(path):
 
 
 def list_logs(paths=None, since=None, until=None, mode="HumanvAI", human_deck=None,
-              exclude_stub=True):
+              exclude_stub=True, opp=None):
     """Battle logs under ``paths`` (dirs, globs or files), filtered by name.
 
     ``mode`` "HumanvAI" keeps only games a person actually played -- self-play logs land in
@@ -86,6 +86,8 @@ def list_logs(paths=None, since=None, until=None, mode="HumanvAI", human_deck=No
         if exclude_stub and "_vs_agent-" in base:
             continue
         if human_deck and human_deck not in base:
+            continue
+        if opp and opponent_of(f) != opp:
             continue
         t = parse_stamp(f)
         if t is None:

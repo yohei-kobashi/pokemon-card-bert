@@ -23,8 +23,13 @@ _ACT = "[ACT]\n"
 
 class HfRerankerScorer:
     def __init__(self, model_dir, device="auto", max_len=512, batch=32, dtype="auto",
-                 time_budget=0.0):
+                 time_budget=0.0, threads=0):
         import torch
+        if threads:
+            # One ~250-token forward does not scale past a handful of cores, and two eval
+            # processes each grabbing every core is how a 2-game run ends up slower than a
+            # 30-game one. Capping is the same reason lm/rerank_scorer.py pins ORT's threads.
+            torch.set_num_threads(threads)
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
         self.torch = torch
         if device == "auto":

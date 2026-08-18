@@ -143,6 +143,7 @@ Google ドライブアプリが次の試合の間にアップロードしてく�
 ```bash
 python tools/kenkyu/log_stats.py                          # 全部
 python tools/kenkyu/log_stats.py --since 2026-08-16       # 期間を切る
+python tools/kenkyu/log_stats.py --opp ogerpon_mono       # 相手を切る
 python tools/kenkyu/log_stats.py --logs "<ドライブ>/logs" --json stats.json
 ```
 
@@ -178,6 +179,7 @@ turns      : 平均 10.6
 |---|---|
 | `DRIVE_DIR` | ドライブのフォルダ（手順1で作ったもの） |
 | `SINCE` / `UNTIL` | **学習に使う対戦の期間**。空なら全部。集計もこの範囲で出ます |
+| `OPPONENT` | 学習に使う相手デッキ。空なら全部、`ogerpon_mono` ならオーガポン戦だけ |
 | `LEARNING_RATE` | **学習率**。標準 5e-6。大きくすると速く変わるが、元の強さを壊しやすい |
 | `EPOCHS` | 同じデータを何周するか（2 くらい） |
 | `L2SP` | 元のモデルからどれだけ離れてよいか。大きいほど元のまま（標準 1e-3） |
@@ -229,16 +231,21 @@ python tools/kenkyu/battle_eval.py --model ~/Downloads/kenkyu_r1 --games 40 --ta
 python tools/kenkyu/battle_eval.py --compare --baseline base
 ```
 
+出力はこの形です（数字は**書き方の例**で、実際の値はあなたの測定結果に入れ替わります）:
+
 ```
 === モデル性能比較 (同じ相手・同じデッキ・先攻後攻を交互) ===
 tag              opponent            games   wins     win% 95% CI           runs
 r1               ogerpon_mono           40     14    35.0% 21.8 - 50.9      1
 base             ogerpon_mono           40     10    25.0% 14.2 - 40.2      1
-heuristic        ogerpon_mono          200     57    28.5% 22.6 - 35.2      1
+heuristic        ogerpon_mono          400     12     3.0%  1.7 -  5.2      2
 
 --- base (40 games, 25.0%) との差 ---
   r1                +10.0pt   p=0.313   差は誤差の範囲
 ```
+
+（`heuristic` の行だけは、この環境で実際に測った値です。`--tag` が同じ測定は合算されるので、
+`runs` が 2 になっています。）
 
 - 結果は 1 つのファイル（`evaluations/kenkyu_results.json`、Colab では `--results` でドライブ）に
   たまっていくので、**何個モデルを作っても後から比べられます**。同じ `--tag` で追加すると合算されます。

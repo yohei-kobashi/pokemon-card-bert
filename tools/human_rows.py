@@ -68,6 +68,8 @@ def main():
     ap.add_argument("--since", default="", help="only games from this date, e.g. 2026-08-16. "
                     "The date comes from the FILENAME stamp, so no file is opened to filter")
     ap.add_argument("--until", default="", help="only games up to this date (inclusive)")
+    ap.add_argument("--opp", default="", help="keep only games against this opponent deck "
+                    "(e.g. ogerpon_mono); empty = every opponent")
     ap.add_argument("--deck", default="dragapult_dusknoir", help="the HUMAN's deck name")
     ap.add_argument("--seat", type=int, default=0, help="human's player index in the log")
     ap.add_argument("--w-win", type=float, default=0.85,
@@ -91,7 +93,7 @@ def main():
     # Same selector the aggregator (tools/kenkyu/log_stats.py) uses, so the rows built here
     # always correspond to the games the研究 just reported statistics for.
     files = list_logs(a.logs, parse_date(a.since), parse_date(a.until, end=True),
-                      human_deck="human-" + a.deck)
+                      human_deck="human-" + a.deck, opp=a.opp or None)
     if not files:
         raise SystemExit("no logs matched %r (since=%r until=%r)" % (a.logs, a.since, a.until))
 

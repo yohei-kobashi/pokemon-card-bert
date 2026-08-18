@@ -174,9 +174,16 @@ def verify(games=2):
     cwd = os.getcwd()
     os.chdir(ROOT)                        # deck/agent paths in the repo are relative
     try:
-        import arena
-        import library
-        from battle_log import load_agent
+        try:
+            import arena
+            import library
+            from battle_log import load_agent
+        except OSError as e:
+            # ctypes raises OSError when the shared library is there but cannot be loaded --
+            # wrong architecture is the usual cause, and the raw message names neither file.
+            sys.exit("the engine binary did not load (%s).\n"
+                     "  This is normally an architecture mismatch. Try rebuilding it:\n"
+                     "    python tools/kenkyu/setup_local.py --build" % e)
         d0, d1 = library.read_deck("dragapult_dusknoir"), library.read_deck("ogerpon_mono")
         a0, a1 = load_agent("dragapult_dusknoir"), load_agent("ogerpon_mono")
         res = [arena.play(a0, a1, d0, d1) for _ in range(games)]

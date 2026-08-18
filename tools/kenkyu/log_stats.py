@@ -90,11 +90,13 @@ def main():
     ap.add_argument("--logs", nargs="*", default=[LOG_DIR], help="dirs/globs of saved games")
     ap.add_argument("--since", default="", help="2026-08-16")
     ap.add_argument("--until", default="")
+    ap.add_argument("--opp", default="", help="only games against this opponent deck")
     ap.add_argument("--seat", type=int, default=0, help="the human's player index")
     ap.add_argument("--json", dest="json_out", default="", help="also write the numbers here")
     a = ap.parse_args()
 
-    files = list_logs(a.logs, parse_date(a.since), parse_date(a.until, end=True))
+    files = list_logs(a.logs, parse_date(a.since), parse_date(a.until, end=True),
+                      opp=a.opp or None)
     print("%d log files in range" % len(files))
     st = report(collect(files, a.seat))
     if a.json_out and st:
