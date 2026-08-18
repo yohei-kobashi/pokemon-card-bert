@@ -1,14 +1,31 @@
 # ポケモンTCG AI エージェント開発
 
-## 学習済みモデル（HuggingFace）
+## 学習済みモデル一覧（HuggingFace）
 
-コンペ終了時点（2026-08-17、最終レーティング 398.2 = dusk_v3）の成果物:
+コンペ終了時点（2026-08-17、最終レーティング 398.2 = `dusk_v3`）に公開した3リポジトリ。
+すべて `yoheikobashi/` 配下・public。合計 約16.5 GB。
 
-| モデル | 内容 |
-|---|---|
-| [ptcg-dusknoir-deberta-reranker](https://huggingface.co/yoheikobashi/ptcg-dusknoir-deberta-reranker) | 提出パイロット本体。DeBERTa-v3-base クロスエンコーダ（fld_r49b, mirror-RL/field DPO 67ラウンド）＋ デプロイ用 INT8 ONNX |
-| [ptcg-qwen3-4b-cardfirst-v40](https://huggingface.co/yoheikobashi/ptcg-qwen3-4b-cardfirst-v40) | Qwen3-4B SFTベース（ドメイントークン約3k、11デッキ自己対戦 ~1.5M 決定で学習）。全LoRAの共有ベース |
-| [ptcg-qwen3-4b-dpo-loras](https://huggingface.co/yoheikobashi/ptcg-qwen3-4b-dpo-loras) | デッキ別 DPO LoRA 群（プレイアウト裁定ペア、±4pt ship/revert ゲート） |
+| リポジトリ | 役割 | 中身 | サイズ |
+|---|---|---|---|
+| [ptcg-dusknoir-deberta-reranker](https://huggingface.co/yoheikobashi/ptcg-dusknoir-deberta-reranker) | **提出パイロット本体** | DeBERTa-v3-base クロスエンコーダ `fld_r49b`（SFT → mirror-RL/field DPO 67ラウンド）。`model.safetensors`(fp32) と、Kaggle 提出用の語彙刈り込み＋weight-only INT8 の `onnx/model_wonly_int8.onnx` + `onnx/vocab_remap.npy` | 0.93 GB |
+| [ptcg-qwen3-4b-cardfirst-v40](https://huggingface.co/yoheikobashi/ptcg-qwen3-4b-cardfirst-v40) | **4B系の共有ベース** | Qwen3-4B に v40 プロンプト形式で SFT した LoRA（11デッキ自己対戦 約1.5M 決定）。ドメイントークン約3kの学習済み埋め込み `domain_embeddings.pt`、`cardfirst_vocab.json`、`checkpoint-6000` / `checkpoint-6178`（optimizer 状態込み＝再開可能） | 11.69 GB |
+| [ptcg-qwen3-4b-dpo-loras](https://huggingface.co/yoheikobashi/ptcg-qwen3-4b-dpo-loras) | **デッキ別 DPO LoRA 群（22本）** | 上記ベースの上に、プレイアウト裁定ペアで DPO した LoRA。各ディレクトリに `adapter_model.safetensors` + `adapter_config.json` + `domain_embeddings.pt` + tokenizer 一式 | 3.87 GB |
+
+`ptcg-qwen3-4b-dpo-loras` の内訳（ディレクトリ名 = アダプタ名）:
+
+- デッキ別（`_r1` / `_r2` はラウンド）: `lora_alakazam_nz_r1`, `lora_archaludon_r1`,
+  `lora_crustle_geco_r1`, `lora_dragapult_r1`, `lora_dragapult_r2`,
+  `lora_dudunsparce_box_r1`, `lora_dudunsparce_box_r2`, `lora_ethan_hooh_r1`,
+  `lora_marnie_grimmsnarl_r1`, `lora_mega_abomasnow_sample_r1`, `lora_mega_lucario_tr_r1`,
+  `lora_ogerpon_mono_r1`, `lora_slowking_r1`, `lora_slowking_r2`
+- 対面特化: `lora_dusk_vs_ogerpon_mono_r1`（最後まで攻略できなかった ogerpon_mono 専用）
+- 全デッキ混合 / 実験系: `dpo_r8`, `lora_night4b_base`, `lora_night4b_filt`,
+  `lora_night5_a`, `lora_night5_b`, `lora_night6_a`, `lora_night6_b`
+
+使い分け: **提出物として実際に走ったのは DeBERTa リランカーのみ**（4B は Kaggle の
+197.66 MiB 制限に載らず、スコア源・教師・実験用に留まる）。4B の LoRA を読むには
+cardfirst-v40 のベース LoRA と `domain_embeddings.pt` を先に適用する必要がある
+（ドメイントークンを含む埋め込みがベース側にあるため）。
 
 学習インフラの実体は `tools/instance/`（両Vastインスタンスの全スクリプトのアーカイブ）、
 人間対局の一次データは `human_games/` を参照。
